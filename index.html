@@ -1,5 +1,51 @@
-<script>
-        // O Service Worker PWA continua aqui
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <!-- Meta tags essenciais para PWA e Mobile -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#121212">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    
+    <title>Taverna RPG</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #121212; color: #e0e0e0; font-family: monospace; padding: 15px; height: 100vh; display: flex; flex-direction: column; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        h2 { font-size: 20px; color: #fff; text-align: center; flex: 1; }
+        .btn-reset { font-size: 10px; padding: 5px 8px; background: #333; color: #aaa; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+        
+        #chat { flex: 1; overflow-y: auto; border: 1px solid #333; padding: 15px; margin-bottom: 15px; background: #1a1a1a; border-radius: 8px; }
+        .user-msg { color: #4caf50; margin-bottom: 15px; border-left: 3px solid #4caf50; padding-left: 10px; }
+        .ia-msg { color: #ff9800; margin-bottom: 15px; border-left: 3px solid #ff9800; padding-left: 10px; line-height: 1.5; }
+        .system-msg { color: #888; font-style: italic; margin-bottom: 15px; font-weight: bold; }
+        .badge-modelo { font-size: 10px; background: #333; color: #aaa; padding: 2px 5px; border-radius: 4px; margin-left: 8px; vertical-align: middle; border: 1px solid #555; }
+        
+        /* Ajuste do input para ficar estilo WhatsApp no mobile */
+        .input-area { display: flex; gap: 10px; padding-bottom: 10px; }
+        input { flex: 1; padding: 15px; background: #222; color: white; border: 1px solid #444; border-radius: 8px; font-family: inherit; font-size: 16px; outline: none; }
+        button.btn-enviar { padding: 15px 20px; cursor: pointer; background: #4caf50; color: black; font-weight: bold; border: none; border-radius: 8px; font-size: 16px; white-space: nowrap; }
+        button.btn-enviar:active { background: #45a049; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>Taverna Dark Fantasy</h2>
+    </div>
+    
+    <div id="chat"></div>
+    
+    <div class="input-area">
+        <input type="text" id="mensagem" placeholder="O que você faz?" onkeypress="if(event.key === 'Enter') enviarMensagem()">
+        <button class="btn-enviar" onclick="enviarMensagem()">Rolar</button>
+    </div>
+
+    <script>
+        // REGISTRO DO SERVICE WORKER (Para o app instalar no celular)
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js').catch(err => console.error(err));
@@ -77,3 +123,5 @@
             if (temp) temp.remove();
         }
     </script>
+</body>
+</html>
