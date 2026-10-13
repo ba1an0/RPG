@@ -497,6 +497,9 @@
                     if (f && !estadoMundo.fatos_mundo.includes(f)) estadoMundo.fatos_mundo.push(f);
                 });
             }
+            if (Array.isArray(mod.remover_fatos_mundo)) {
+                estadoMundo.fatos_mundo = estadoMundo.fatos_mundo.filter(f => !mod.remover_fatos_mundo.includes(f));
+            }
 
             if (Array.isArray(mod.itens_gastos)) {
                 mod.itens_gastos.forEach(gasto => {
