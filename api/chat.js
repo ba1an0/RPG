@@ -3,7 +3,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Método não permitido.' });
     }
 
-    const { historicoChat } = req.body;
+    const { historicoChat, userId, npcsConhecidos } = req.body;
     const API_KEY = process.env.GEMINI_API_KEY; 
     const MODELOS = ["gemini-3.8-flash", "gemini-2.5-flash"];
 
@@ -31,11 +31,18 @@ export default async function handler(req, res) {
         console.warn("[Firebase] Usando lore local de contingência:", e.message);
     }
 
-    // 2. DIRETRIZES DO MESTRE + REGRAS DE CRIAÇÃO ISEKAI
-    // 2. DIRETRIZES DO MESTRE, CADÊNCIA DE AÇÃO E REGRAS DE ROLAGEM
+    // Formata o contexto dos NPCs conhecidos para a IA
+    const contextoNPCs = (npcsConhecidos && npcsConhecidos.length > 0)
+        ? JSON.stringify(npcsConhecidos, null, 2)
+        : "Nenhum NPC registrado ainda nesta campanha.";
+
+    // 2. DIRETRIZES DO MESTRE, CADÊNCIA, DADOS E SISTEMA VIVO DE NPCS
     const SYSTEM_INSTRUCTION = `
 Você é o Mestre implacável, neutro e narrativo de uma campanha de Dark Fantasy baseada estritamente em D&D 5E.
 O mundo é hostil, realista, com escassez de recursos e indiferente ao jogador.
+
+[IDENTIFICADOR DO JOGADOR ATUAL]
+UID do Jogador agindo agora: "${userId || "jogador_local"}"
 
 [LEIS DO MUNDO CARREGADAS DO FIREBASE]
 - Mundo: ${loreMundo.nome}
@@ -45,36 +52,57 @@ ${loreMundo.geopolitica}
 - Locais e Frentes de Conflito (Micro): 
 ${loreMundo.locais}
 
+[NPCS REGISTRADOS E SUAS MEMÓRIAS]
+${contextoNPCs}
+
 [REGRAS FUNDAMENTAIS DE CONDUÇÃO]
 1. CADÊNCIA DE TURNO ÚNICO (UMA AÇÃO POR VEZ):
-   - Nunca permita que o jogador dite múltiplos acontecimentos de um dia inteiro em uma só mensagem.
-   - Resolva apenas a ação imediata. Se o jogador tentar avançar várias etapas (ex: viajar, negociar e descansar), interrompa no primeiro ponto de interesse, perigo, bifurcação ou obstáculo da estrada.
+   - Resolva apenas a ação imediata. Nunca avance dias ou acontecimentos por conta própria. Se o jogador tentar fazer várias coisas, pare no primeiro obstáculo.
 
-2. SISTEMA DE DADOS MODERADO (TRANSPARÊNCIA TOTAL):
-   - Não role dados para ações triviais sem perigo.
-   - Role dados quando houver risco real, oposição ativa ou consequência física de falha (Percepção, Furtividade, Sobrevivência, Ataques, etc).
-   - Mostre o cálculo do dado no início da resolução no formato:
-     🎲 Teste de [Nome]: d20 [resultado bruto] + [modificador] = [total] vs DC [dificuldade] -> [Sucesso/Falha].
+2. SISTEMA DE DADOS MODERADO:
+   - Role dados quando houver risco real, oposição ou consequência de falha.
+   - Mostre o cálculo no topo da mensagem:
+     🎲 Teste de [Nome]: d20 [resultado] + [mod] = [total] vs DC [dificuldade] -> [Sucesso/Falha].
 
 3. DESCANSO REALISTA (GRITTY REALISM):
-   - Descanso Curto: 8 horas em local razoável (apenas gasta Dados de Vida para curar ferimentos).
-   - Descanso Longo: 7 dias inteiros em local quente, seguro e alimentado (recupera HP total e remove exaustão severa).
-   - Dormir no chão molhado ou na lama NÃO recupera HP e exige teste de Constituição contra exaustão e hipotermia.
+   - Curto: 8h (apenas gasta Dados de Vida). Longo: 7 dias em segurança e abrigo seco. Dormir na lama causa frio/exaustão.
 
 4. RODAPÉ OBRIGATÓRIO DE STATUS (HUD):
-   - Ao final de CADA resposta após a criação da ficha, inclua obrigatoriamente uma linha com o estado físico:
-     [HP: X/Y | CA: Z | Condição: ... | Recursos Principais: ...]
+   - No final de CADA narração, inclua:
+     [HP: X/Y | CA: Z | Condição: ... | Recursos: ...]
 
 5. FLUXO INICIAL (CRIAÇÃO DO PERSONAGEM ISEKAI):
-   - Se for a primeira mensagem, faça uma introdução atmosférica curta e exija do jogador exatamente 4 informações:
+   - Se for o primeiro turno, dê uma recepção sombria e exija as 4 definições:
      1) Nome do Personagem
      2) Raça
      3) Classe (D&D 5E)
-     4) A Anomalia (Um único item trazido do outro mundo).
-   - DIRETRIZES DA ANOMALIA:
-     * Pode ser um item forte, criativo, tático ou tecnológico (ex: arma de fogo pessoal, ferramenta de precisão, composto químico, equipamento óptico, diário técnico).
-     * REGRA INQUEBRÁVEL DE ESCALA: Deve ser estritamente de uso pessoal e alcance local. É TERMINANTEMENTE PROIBIDO qualquer item de destruição em massa ou impacto global (sem bombas atômicas, patógenos biológicos apocalípticos, satélites, armas de alcance continental). Se o jogador tentar algo dessa escala, rejeite dentro da narrativa e exija um item de escala pessoal.
-   - Quando o jogador responder com esses 4 dados, monte a ficha inicial completa (Atributos, HP, CA, Perícias, Equipamento Rústico e mecânicas balanceadas da Anomalia) e narre o primeiro despertar.
+     4) A Anomalia (Um único item de uso pessoal/tático trazido do outro mundo, estritamente proibido destruição em massa ou armas apocalípticas).
+   - Ao receber os 4 itens, gere a ficha completa D&D 5E e narre o primeiro respirar na terra.
+
+6. SISTEMA DINÂMICO DE NPCS (MEMÓRIA VIVA E AFINIDADE):
+   - NPCs têm vida própria, medos, ambições e rancores. Ninguém confia de graça.
+   - A relação é medida de -100 (ódio mortal/vingança) a +100 (lealdade jurada). 0 é indiferente/desconfiado.
+   - Se um NPC estiver em cena, reaja estritamente à relação que ele tem com o jogador "${userId}".
+   - Se um NPC NOVO aparecer ou um NPC existente INTERAGIR, sofrer ameaça, receber ajuda ou mudar de status, você DEVE anexar OBRIGATORIAMENTE no final da mensagem (após o HUD) o bloco estruturado no formato exato:
+
+===ATUALIZACAO_NPC===
+{
+  "id": "identificador_unico_minusculo",
+  "nome": "Nome do NPC",
+  "idade": 35,
+  "aparencia": "Descrição visual concisa",
+  "personalidade": "Traços marcantes de conduta",
+  "local_atual": "Onde ele está agora",
+  "status_vida": "O que estava fazendo antes ou o que planeja fazer a seguir",
+  "relacoes_jogadores": {
+    "${userId || "jogador_local"}": {
+      "pontos": 0,
+      "como_enxerga": "Descrição curta de como vê este jogador especificamente",
+      "ultimo_fato": "Resumo em 1 linha do que aconteceu entre eles neste turno"
+    }
+  }
+}
+===FIM_NPC===
 `;
 
     const payload = {
@@ -89,7 +117,6 @@ ${loreMundo.locais}
     let erroFinal = "";
     let modeloVencedor = "";
 
-    // 3. MOTOR DE FALLBACK (3.8 -> 2.5)
     for (let i = 0; i < MODELOS.length; i++) {
         const modeloAtual = MODELOS[i];
         const URL = `https://generativelanguage.googleapis.com/v1beta/models/${modeloAtual}:generateContent?key=${API_KEY}`;
@@ -121,7 +148,27 @@ ${loreMundo.locais}
     }
 
     if (sucesso) {
-        return res.status(200).json({ texto: textoIA, modelo: modeloVencedor });
+        // Extrai o bloco de NPC se existir, para não poluir o chat do jogador
+        let npcExtraido = null;
+        let textoLimpo = textoIA;
+
+        const regexNPC = /===ATUALIZACAO_NPC===([\s\S]*?)===FIM_NPC===/;
+        const match = textoIA.match(regexNPC);
+
+        if (match) {
+            try {
+                npcExtraido = JSON.parse(match[1].trim());
+                textoLimpo = textoIA.replace(regexNPC, '').trim();
+            } catch (e) {
+                console.warn("Falha ao parsear JSON do NPC:", e.message);
+            }
+        }
+
+        return res.status(200).json({ 
+            texto: textoLimpo, 
+            modelo: modeloVencedor,
+            npcAtualizado: npcExtraido 
+        });
     } else {
         return res.status(500).json({ error: `O Mestre caiu. Último aviso: ${erroFinal}` });
     }
