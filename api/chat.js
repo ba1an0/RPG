@@ -229,7 +229,7 @@ ${contextoNPCs}
 ===FIM_NPC===
 
 7. SISTEMA DE EVOLUÇÃO, VÍNCULOS, MUNDO E INVENTÁRIO:
-   - Sempre que o jogador sofrer dano, curar, mudar de local, ganhar/perder condições físicas, ganhar/gastar itens ou conquistar um MARCO PERMANENTE (ex: casar com alguém, juramentos, cicatrizes permanentes, títulos, inimizades de facção ou alterar algo no mundo), anexe no final da resposta:
+   - Sempre que o jogador sofrer dano, curar, mudar de local, ganhar/perder condições, ganhar/gastar itens, tomar decisões específicas sobre um item (esconder num baú, ocultar nas roupas, envenenar, danificar, emprestar) ou conquistar um MARCO PERMANENTE, anexe no final da resposta:
 ===ATUALIZACAO_ESTADO===
 {
   "dano_sofrido": 0,
@@ -245,11 +245,13 @@ ${contextoNPCs}
   "remover_marcos_personagem": [],
   "novos_fatos_mundo": [],
   "itens_gastos": [],
-  "itens_ganhos": []
+  "itens_ganhos": [],
+  "itens_observacao": []
 }
 ===FIM_ATUALIZACAO_ESTADO===
-   - Formato de "itens_gastos": [{ "id": "id_do_item", "qtd_gasta": 1, "qtd_municao_gasta": 0 }]
+   - Formato de "itens_gastos": [{ "id": "id_do_item", "qtd_gasta": 1, "qtd_municao_gasta": 0 }] (Use APENAS quando o item for consumido, destruído ou perdido de vez).
    - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
+   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Lembrete livre sobre o estado, decisão ou onde o item foi deixado/escondido (ou string vazia '' para limpar)" }]
    - REGRA CRÍTICA: NUNCA use crases (\`\`\`json) dentro das tags ===...===. Feche sempre todas as tags corretamente.
 `;
 
