@@ -3,7 +3,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Método não permitido.' });
     }
 
-    const { historicoChat, userId, npcsConhecidos } = req.body;
+    const { historicoChat, userId, npcsConhecidos, statusJogador, inventario } = req.body;
     const API_KEY = process.env.GEMINI_API_KEY; 
     const MODELOS = ["gemini-3.8-flash", "gemini-2.5-flash"];
 
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
         ? JSON.stringify(npcsConhecidos, null, 2)
         : "Nenhum NPC registrado ainda nesta campanha.";
 
-    // 2. DIRETRIZES DO MESTRE, CADÊNCIA, DADOS E SISTEMA VIVO DE NPCS
+    // 2. DIRETRIZES DO MESTRE, CADÊNCIA, DADOS E SISTEMA VIVO
     const SYSTEM_INSTRUCTION = `
 Você é o Mestre implacável, neutro e narrativo de uma campanha de Dark Fantasy baseada estritamente em D&D 5E.
 O mundo é hostil, realista, com escassez de recursos e indiferente ao jogador.
@@ -55,6 +55,10 @@ ${loreMundo.locais}
 [NPCS REGISTRADOS E SUAS MEMÓRIAS]
 ${contextoNPCs}
 
+[FICHA E INVENTÁRIO ATUAL DO JOGADOR]
+Status: ${statusJogador ? JSON.stringify(statusJogador) : "Ainda não criado"}
+Inventário: ${inventario && inventario.length > 0 ? JSON.stringify(inventario) : "Vazio / Não definido"}
+
 [REGRAS FUNDAMENTAIS DE CONDUÇÃO]
 1. CADÊNCIA DE TURNO ÚNICO (UMA AÇÃO POR VEZ):
    - Resolva apenas a ação imediata. Nunca avance dias ou acontecimentos por conta própria. Se o jogador tentar fazer várias coisas, pare no primeiro obstáculo.
@@ -72,19 +76,34 @@ ${contextoNPCs}
      [HP: X/Y | CA: Z | Condição: ... | Recursos: ...]
 
 5. FLUXO INICIAL (CRIAÇÃO DO PERSONAGEM ISEKAI):
-   - Se for o primeiro turno, dê uma recepção sombria e exija as 4 definições:
-     1) Nome do Personagem
-     2) Raça
-     3) Classe (D&D 5E)
-     4) A Anomalia (Um único item de uso pessoal/tático trazido do outro mundo, estritamente proibido destruição em massa ou armas apocalípticas).
-   - Ao receber os 4 itens, gere a ficha completa D&D 5E e narre o primeiro respirar na terra.
+   - Se for o primeiro turno, receba as 4 definições (Nome, Raça, Classe, Anomalia).
+   - Além da narração e da ficha descrita, você DEVE anexar OBRIGATORIAMENTE no final da mensagem o bloco exato:
+===ESTADO_INICIAL===
+{
+  "status_jogador": {
+    "nome": "Nome",
+    "raca": "Raça",
+    "classe": "Classe",
+    "nivel": 1,
+    "hp_atual": 10,
+    "hp_max": 10,
+    "ca": 14,
+    "condicoes": ["Desorientado"],
+    "atributos": { "FOR": 10, "DES": 16, "CON": 14, "INT": 12, "SAB": 10, "CAR": 14 }
+  },
+  "inventario": [
+    { "id": "anomalia", "nome": "Nome do Item Anômalo", "tipo": "anomalia", "qtd": 1, "municao": 100, "detalhes": "Efeito especial" },
+    { "id": "adaga", "nome": "Adaga", "tipo": "arma", "qtd": 1, "detalhes": "1d4 perfurante" },
+    { "id": "racao", "nome": "Rações de viagem", "tipo": "consumivel", "qtd": 3, "detalhes": "3 dias de comida seca" }
+  ]
+}
+===FIM_ESTADO_INICIAL===
 
 6. SISTEMA DINÂMICO DE NPCS (MEMÓRIA VIVA E AFINIDADE):
    - NPCs têm vida própria, medos, ambições e rancores. Ninguém confia de graça.
    - A relação é medida de -100 (ódio mortal/vingança) a +100 (lealdade jurada). 0 é indiferente/desconfiado.
    - Se um NPC estiver em cena, reaja estritamente à relação que ele tem com o jogador "${userId}".
    - Se um NPC NOVO aparecer ou um NPC existente INTERAGIR, sofrer ameaça, receber ajuda ou mudar de status, você DEVE anexar OBRIGATORIAMENTE no final da mensagem (após o HUD) o bloco estruturado no formato exato:
-
 ===ATUALIZACAO_NPC===
 {
   "id": "identificador_unico_minusculo",
@@ -103,6 +122,19 @@ ${contextoNPCs}
   }
 }
 ===FIM_NPC===
+
+7. SISTEMA DE GASTO E DANO (ATUALIZAÇÃO DE ESTADO):
+   - Se o jogador TOMAR DANO, SE CURAR, GASTAR MUNIÇÃO/RECURSO ou GANHAR UM ITEM NOVO durante a narrativa, adicione no fim da mensagem:
+===ATUALIZACAO_ESTADO===
+{
+  "dano_sofrido": 0,
+  "cura_recebida": 0,
+  "novas_condicoes": [],
+  "remover_condicoes": [],
+  "itens_gastos": [{ "id": "anomalia", "qtd_municao_gasta": 1 }, { "id": "racao", "qtd_gasta": 1 }],
+  "itens_ganhos": [{ "id": "chave_ferro", "nome": "Chave Enferrujada", "tipo": "item", "qtd": 1, "detalhes": "Achada no lodo" }]
+}
+===FIM_ATUALIZACAO_ESTADO===
 `;
 
     const payload = {
@@ -148,26 +180,53 @@ ${contextoNPCs}
     }
 
     if (sucesso) {
-        // Extrai o bloco de NPC se existir, para não poluir o chat do jogador
         let npcExtraido = null;
+        let estadoInicial = null;
+        let estadoAtualizado = null;
         let textoLimpo = textoIA;
 
+        // 1. Extrai NPC
         const regexNPC = /===ATUALIZACAO_NPC===([\s\S]*?)===FIM_NPC===/;
-        const match = textoIA.match(regexNPC);
-
-        if (match) {
-            try {
-                npcExtraido = JSON.parse(match[1].trim());
-                textoLimpo = textoIA.replace(regexNPC, '').trim();
+        const matchNPC = textoLimpo.match(regexNPC);
+        if (matchNPC) {
+            try { 
+                npcExtraido = JSON.parse(matchNPC[1].trim()); 
             } catch (e) {
-                console.warn("Falha ao parsear JSON do NPC:", e.message);
+                console.warn("Falha ao parsear NPC:", e.message);
             }
+            textoLimpo = textoLimpo.replace(regexNPC, '').trim();
+        }
+
+        // 2. Extrai Estado Inicial (Criação de Ficha)
+        const regexEstadoIni = /===ESTADO_INICIAL===([\s\S]*?)===FIM_ESTADO_INICIAL===/;
+        const matchEstadoIni = textoLimpo.match(regexEstadoIni);
+        if (matchEstadoIni) {
+            try { 
+                estadoInicial = JSON.parse(matchEstadoIni[1].trim()); 
+            } catch (e) {
+                console.warn("Falha ao parsear Estado Inicial:", e.message);
+            }
+            textoLimpo = textoLimpo.replace(regexEstadoIni, '').trim();
+        }
+
+        // 3. Extrai Atualização de Estado (Dano, Gasto de Itens, Loot)
+        const regexAtualizacao = /===ATUALIZACAO_ESTADO===([\s\S]*?)===FIM_ATUALIZACAO_ESTADO===/;
+        const matchAtualizacao = textoLimpo.match(regexAtualizacao);
+        if (matchAtualizacao) {
+            try { 
+                estadoAtualizado = JSON.parse(matchAtualizacao[1].trim()); 
+            } catch (e) {
+                console.warn("Falha ao parsear Atualização de Estado:", e.message);
+            }
+            textoLimpo = textoLimpo.replace(regexAtualizacao, '').trim();
         }
 
         return res.status(200).json({ 
             texto: textoLimpo, 
             modelo: modeloVencedor,
-            npcAtualizado: npcExtraido 
+            npcAtualizado: npcExtraido,
+            estadoInicial: estadoInicial,
+            estadoAtualizado: estadoAtualizado
         });
     } else {
         return res.status(500).json({ error: `O Mestre caiu. Último aviso: ${erroFinal}` });
