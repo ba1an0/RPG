@@ -1,15 +1,19 @@
 export default async function handler(req, res) {
+    // 1. Só aceita requisições POST do seu próprio site
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Método não permitido.' });
     }
 
+    // 2. Recebe o histórico do celular do jogador
     const { historicoChat } = req.body;
+    
+    // 3. Puxa a chave SECRETA que vai ficar escondida no painel do Vercel
     const API_KEY = process.env.GEMINI_API_KEY; 
 
-    // Vamos priorizar o 2.5 primeiro que sabemos que rodou liso pra vc de graça, 
-    // e deixamos o 3.8 como segunda opção (ou vice-versa no futuro)
-    const MODELOS = ["gemini-2.5-flash", "gemini-3.8-flash"];
+    // 4. A Ordem de Prioridade: 3.8 absoluto na frente, 2.5 como estepe
+    const MODELOS = ["gemini-3.8-flash", "gemini-2.5-flash"];
     
+    // 5. As regras do seu RPG (Ficam escondidas no servidor)
     const payload = {
         system_instruction: {
             parts: [{ text: "Você é um implacável mestre de RPG de mesa de D&D 5E focado em Dark Fantasy. Seja descritivo, sombrio e direto nas consequências das ações. Role dados nos bastidores se necessário." }]
@@ -22,10 +26,11 @@ export default async function handler(req, res) {
     let erroFinal = "";
     let modeloVencedor = "";
 
+    // O Motor Inteligente de Fallback rodando na Nuvem
     for (let i = 0; i < MODELOS.length; i++) {
         const modeloAtual = MODELOS[i];
         
-        // Voltando pro v1beta que é onde seus modelos novos moram
+        // A rota v1beta é obrigatória para acessar o 3.8 e o 2.5
         const URL = `https://generativelanguage.googleapis.com/v1beta/models/${modeloAtual}:generateContent?key=${API_KEY}`;
 
         try {
@@ -38,23 +43,27 @@ export default async function handler(req, res) {
             const textoBruto = await response.text();
 
             if (!response.ok) {
-                // A CORREÇÃO DE OURO: Agora, se der QUALQUER erro (402, 404, 503), ele anota e PULA pro próximo!
+                // Se der QUALQUER erro (503 lotado, 402 sem saldo, 429 limite), ele anota e PULA pro próximo!
                 erroFinal = `Erro ${response.status} no ${modeloAtual}`;
-                console.warn(erroFinal); // Fica salvo no log do Vercel
+                console.warn(`[Aviso do Servidor] ${erroFinal}. Tentando o próximo...`); 
                 continue; 
             }
 
+            // SUCESSO!
             const data = JSON.parse(textoBruto);
             textoIA = data.candidates[0].content.parts[0].text;
             sucesso = true;
-            modeloVencedor = modeloAtual.replace('gemini-', ''); // Deixa o badge mais limpo
-            break; 
+            
+            // Limpa o nome para a etiqueta no front-end ficar bonitinha (ex: "3.8-flash")
+            modeloVencedor = modeloAtual.replace('gemini-', ''); 
+            break; // Achou um que funciona, sai do loop de tentativas!
 
         } catch (error) {
-            erroFinal = `Erro no fetch: ${error.message}`;
+            erroFinal = `Erro na requisição da nuvem: ${error.message}`;
         }
     }
 
+    // 6. Devolve só o texto e o modelo vencedor pro celular do jogador
     if (sucesso) {
         return res.status(200).json({ texto: textoIA, modelo: modeloVencedor });
     } else {
