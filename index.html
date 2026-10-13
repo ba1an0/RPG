@@ -208,10 +208,10 @@
 
                     const npcConsolidado = {
                         id: npcNovo.id,
-                        nome: npcNovo.nome || npcExistente.nome || "Desconhecido",
-                        idade: npcNovo.idade || npcExistente.idade || null,
-                        aparencia: npcNovo.aparencia || npcExistente.aparencia || "",
-                        personalidade: npcNovo.personalidade || npcExistente.personalidade || "",
+                        nome: npcExistente.nome || npcNovo.nome || "Desconhecido",
+                        idade: npcExistente.idade || npcNovo.idade || null,
+                        aparencia: npcExistente.aparencia || npcNovo.aparencia || "",
+                        personalidade: npcExistente.personalidade || npcNovo.personalidade || "",
                         local_atual: npcNovo.local_atual || npcExistente.local_atual || "Desconhecido",
                         status_vida: npcNovo.status_vida || npcExistente.status_vida || "Ativo",
                         relacoes_jogadores: {
