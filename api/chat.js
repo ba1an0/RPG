@@ -1,22 +1,67 @@
 export default async function handler(req, res) {
-    // 1. Só aceita requisições POST do seu próprio site
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Método não permitido.' });
     }
 
-    // 2. Recebe o histórico do celular do jogador
     const { historicoChat } = req.body;
-    
-    // 3. Puxa a chave SECRETA que vai ficar escondida no painel do Vercel
     const API_KEY = process.env.GEMINI_API_KEY; 
-
-    // 4. A Ordem de Prioridade: 3.8 absoluto na frente, 2.5 como estepe
     const MODELOS = ["gemini-3.8-flash", "gemini-2.5-flash"];
-    
-    // 5. As regras do seu RPG (Ficam escondidas no servidor)
+
+    // 1. BUSCA O MUNDO DINÂMICO DIRETO DO SEU FIREBASE (REST API)
+    let loreMundo = {
+        nome: "Aethelgard",
+        tom: "Dark Fantasy D&D 5E brutal.",
+        geopolitica: "Protetorado de Valenor, Principados Livres de Oakhaven, Ermo Cinzento.",
+        locais: "Ouro-Velho, Pântano das Sete Léguas, Gelo-Morto."
+    };
+
+    try {
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/tavern-rpg-567f2/databases/(default)/documents/mundo/aethelgard`;
+        const firestoreRes = await fetch(firestoreUrl);
+        if (firestoreRes.ok) {
+            const data = await firestoreRes.json();
+            loreMundo = {
+                nome: data.fields?.nome?.stringValue || loreMundo.nome,
+                tom: data.fields?.tom?.stringValue || loreMundo.tom,
+                geopolitica: data.fields?.geopolitica_macro?.stringValue || loreMundo.geopolitica,
+                locais: data.fields?.locais_micro?.stringValue || loreMundo.locais
+            };
+        }
+    } catch (e) {
+        console.warn("[Firebase] Usando lore local de contingência:", e.message);
+    }
+
+    // 2. DIRETRIZES DO MESTRE + REGRAS DE CRIAÇÃO ISEKAI
+    const SYSTEM_INSTRUCTION = `
+Você é o Mestre implacável, neutro e narrativo de uma campanha de Dark Fantasy baseada estritamente em D&D 5E.
+O mundo é hostil, realista, com escassez de recursos e indiferente ao jogador.
+
+[LEIS DO MUNDO CARREGADAS DO FIREBASE]
+- Mundo: ${loreMundo.nome}
+- Tom: ${loreMundo.tom}
+- Geopolítica (Macro): 
+${loreMundo.geopolitica}
+- Locais e Frentes de Conflito (Micro): 
+${loreMundo.locais}
+
+[REGRAS DE CONDUÇÃO]
+1. ZERO COMPLACÊNCIA: O mundo não puxa o saco do jogador. NPCs têm interesses próprios, egoísmo, medo e desconfiança de forasteiros.
+2. DADOS E CONSEQUÊNCIAS: Role testes de D&D 5E internamente nos bastidores para desafios, furtividade, combate e resistências. Narre a consequência direta com peso físico.
+3. FLUXO INICIAL (CRIAÇÃO DO PERSONAGEM ISEKAI):
+   - Se for o primeiro turno (o despertar), faça uma introdução sombria e imersiva sobre o peso de ${loreMundo.nome}. Em seguida, exija do jogador apenas 3 escolhas:
+     1) Raça
+     2) Classe (D&D 5E)
+     3) A Anomalia (Um único item de sua escolha do outro mundo que veio com ele).
+   - Quando o jogador fornecer essas 3 respostas, VOCÊ (o Mestre) deve:
+     * Gerar e listar a ficha completa inicial: Atributos clássicos de D&D 5E (FOR, DES, CON, INT, SAB, CAR), Pontos de Vida (HP), Classe de Armadura (CA) e Condição inicial.
+     * Atribuir o equipamento básico de sobrevivência rústico condizente com o cenário.
+     * Incorporar a Anomalia escolhida pelo jogador com regras bem definidas (ex: se for uma arma ou objeto moderno, munição/usos estritamente limitados e o impacto do som/tecnologia no mundo).
+     * Imediatamente após a ficha, narrar o primeiro suspiro dele no mundo em um dos locais de fronteira.
+`;
+
     const payload = {
         system_instruction: {
-            parts: [{ text: "Você é um implacável mestre de RPG de mesa de D&D 5E focado em Dark Fantasy. Seja descritivo, sombrio e direto nas consequências das ações. Role dados nos bastidores se necessário." }]
+            parts: [{ text: SYSTEM_INSTRUCTION }]
         },
         contents: historicoChat
     };
@@ -26,11 +71,9 @@ export default async function handler(req, res) {
     let erroFinal = "";
     let modeloVencedor = "";
 
-    // O Motor Inteligente de Fallback rodando na Nuvem
+    // 3. MOTOR DE FALLBACK (3.8 -> 2.5)
     for (let i = 0; i < MODELOS.length; i++) {
         const modeloAtual = MODELOS[i];
-        
-        // A rota v1beta é obrigatória para acessar o 3.8 e o 2.5
         const URL = `https://generativelanguage.googleapis.com/v1beta/models/${modeloAtual}:generateContent?key=${API_KEY}`;
 
         try {
@@ -43,30 +86,25 @@ export default async function handler(req, res) {
             const textoBruto = await response.text();
 
             if (!response.ok) {
-                // Se der QUALQUER erro (503 lotado, 402 sem saldo, 429 limite), ele anota e PULA pro próximo!
                 erroFinal = `Erro ${response.status} no ${modeloAtual}`;
-                console.warn(`[Aviso do Servidor] ${erroFinal}. Tentando o próximo...`); 
+                console.warn(`[Fallback] ${erroFinal}`);
                 continue; 
             }
 
-            // SUCESSO!
             const data = JSON.parse(textoBruto);
             textoIA = data.candidates[0].content.parts[0].text;
             sucesso = true;
-            
-            // Limpa o nome para a etiqueta no front-end ficar bonitinha (ex: "3.8-flash")
             modeloVencedor = modeloAtual.replace('gemini-', ''); 
-            break; // Achou um que funciona, sai do loop de tentativas!
+            break;
 
         } catch (error) {
-            erroFinal = `Erro na requisição da nuvem: ${error.message}`;
+            erroFinal = `Erro no fetch: ${error.message}`;
         }
     }
 
-    // 6. Devolve só o texto e o modelo vencedor pro celular do jogador
     if (sucesso) {
         return res.status(200).json({ texto: textoIA, modelo: modeloVencedor });
     } else {
-        return res.status(500).json({ error: `Todas as opções de Mestre falharam. Último aviso: ${erroFinal}` });
+        return res.status(500).json({ error: `O Mestre caiu. Último aviso: ${erroFinal}` });
     }
 }
