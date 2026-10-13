@@ -1,9 +1,28 @@
-function limparJson(texto) {
-    if (!texto) return "";
-    return texto
+// Extrai apenas o objeto/array JSON válido, mesmo se houver texto ou markdown ao redor
+function extrairJsonSeguro(texto) {
+    if (!texto) return null;
+    let limpo = texto
         .replace(/```json/gi, '')
         .replace(/```/g, '')
         .trim();
+
+    const inicioObj = limpo.indexOf('{');
+    const fimObj = limpo.lastIndexOf('}');
+
+    if (inicioObj !== -1 && fimObj !== -1 && fimObj > inicioObj) {
+        limpo = limpo.substring(inicioObj, fimObj + 1);
+    }
+
+    return JSON.parse(limpo);
+}
+
+// Rola dados reais no servidor para impedir viés estatístico da IA
+function rolarDados(lados, quantidade) {
+    const resultados = [];
+    for (let i = 0; i < quantidade; i++) {
+        resultados.push(Math.floor(Math.random() * lados) + 1);
+    }
+    return resultados;
 }
 
 export default async function handler(req, res) {
@@ -32,7 +51,7 @@ export default async function handler(req, res) {
     };
 
     try {
-        const firestoreUrl = `[https://firestore.googleapis.com/v1/projects/tavern-rpg-567f2/databases/(default)/documents/mundo/aethelgard](https://firestore.googleapis.com/v1/projects/tavern-rpg-567f2/databases/(default)/documents/mundo/aethelgard)`;
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/tavern-rpg-567f2/databases/(default)/documents/mundo/aethelgard`;
         const firestoreRes = await fetch(firestoreUrl);
         if (firestoreRes.ok) {
             const data = await firestoreRes.json();
@@ -47,32 +66,74 @@ export default async function handler(req, res) {
         console.warn("[Firebase] Usando lore local de contingência:", e.message);
     }
 
-    // 2. JANELA DESLIZANTE DO HISTÓRICO (Evita estouro de tokens em campanhas longas)
+    // 2. JANELA DESLIZANTE DO HISTÓRICO ENVIADO À IA (Últimas 16 mensagens)
     let historicoRecente = Array.isArray(historicoChat) ? [...historicoChat] : [];
     const LIMITE_MENSAGENS = 16;
     if (historicoRecente.length > LIMITE_MENSAGENS) {
         historicoRecente = historicoRecente.slice(-LIMITE_MENSAGENS);
     }
-    // A API do Gemini exige que a primeira mensagem do array contents seja sempre 'user'
     while (historicoRecente.length > 0 && historicoRecente[0].role !== 'user') {
         historicoRecente.shift();
     }
 
-    const contextoNPCs = (npcsConhecidos && npcsConhecidos.length > 0)
-        ? JSON.stringify(npcsConhecidos, null, 2)
-        : "Nenhum NPC registrado ainda nesta campanha.";
+    // 3. POOL DE DADOS REAIS SORTEADOS NO SERVIDOR PARA ESTE TURNO
+    const filaDados = {
+        d20: rolarDados(20, 4),
+        d12: rolarDados(12, 2),
+        d10: rolarDados(10, 2),
+        d8: rolarDados(8, 3),
+        d6: rolarDados(6, 4),
+        d4: rolarDados(4, 3)
+    };
+
+    // 4. SEPARAÇÃO INTELIGENTE DE NPCS (Locais/Citados vs Distantes para não inflar tokens)
+    const uid = userId || "jogador_local";
+    const localAtual = (estadoMundo?.local_atual || "").toLowerCase();
+    const ultimaMsgUsuario = (historicoRecente[historicoRecente.length - 1]?.parts?.[0]?.text || "").toLowerCase();
+
+    let contextoNPCs = "Nenhum NPC registrado ainda nesta campanha.";
+    if (Array.isArray(npcsConhecidos) && npcsConhecidos.length > 0) {
+        const npcsLocais = [];
+        const npcsDistantes = [];
+
+        npcsConhecidos.forEach(npc => {
+            const localNpc = (npc.local_atual || "").toLowerCase();
+            const nomeNpc = (npc.nome || "").toLowerCase();
+            const mesmoLocal = localAtual && localNpc && (localAtual.includes(localNpc) || localNpc.includes(localAtual));
+            const foiCitado = nomeNpc && ultimaMsgUsuario.includes(nomeNpc.split(' ')[0]);
+
+            if (npcsConhecidos.length <= 8 || mesmoLocal || foiCitado) {
+                npcsLocais.push(npc);
+            } else {
+                const rel = npc.relacoes_jogadores?.[uid] || { pontos: 0, como_enxerga: "Indiferente" };
+                npcsDistantes.push(`- ${npc.nome} (id: ${npc.id}) | Local: ${npc.local_atual} | Status: ${npc.status_vida} | Afinidade: ${rel.pontos} (${rel.como_enxerga})`);
+            }
+        });
+
+        contextoNPCs = `[NPCS PRESENTES OU PRÓXIMOS (FICHA COMPLETA)]:\n${npcsLocais.length > 0 ? JSON.stringify(npcsLocais, null, 2) : "Nenhum."}\n\n[NPCS DISTANTES (RESUMO)]:\n${npcsDistantes.length > 0 ? npcsDistantes.join('\n') : "Nenhum."}`;
+    }
+
+    // 5. TRAVA DE EMERGÊNCIA PARA 0 DE HP (INCONSCIENTE / AGONIZANDO)
+    const alertaZeroHP = (statusJogador && Number(statusJogador.hp_atual) <= 0)
+        ? `\n⚠️ [ALERTA CRÍTICO DE SISTEMA: JOGADOR COM 0 DE HP!] ⚠️\nO jogador está CAÍDO, INCONSCIENTE ou AGONIZANDO (0 HP). Você é PROIBIDO de permitir que ele realize ações físicas normais (correr, atacar, falar normalmente). Exija imediatamente um Teste Contra a Morte (Death Save de D&D 5E: d20 puro, >=10 sucesso, <10 falha) usando o primeiro d20 da fila do servidor, ou narre as consequências brutais de sua queda (ser roubado, capturado ou morto).\n`
+        : "";
 
     const contextoMundoCampanha = estadoMundo
         ? JSON.stringify(estadoMundo, null, 2)
         : "Início da jornada.";
 
-    // 3. DIRETRIZES DO MESTRE E MOTOR DE PERSISTÊNCIA
+    // 6. DIRETRIZES DO MESTRE E MOTOR DE PERSISTÊNCIA
     const SYSTEM_INSTRUCTION = `
 Você é o Mestre implacável, neutro e narrativo de uma campanha de Dark Fantasy baseada estritamente em D&D 5E.
 O mundo é hostil, realista, com escassez de recursos e indiferente ao jogador.
-
+${alertaZeroHP}
 [IDENTIFICADOR DO JOGADOR ATUAL]
-UID do Jogador agindo agora: "${userId || "jogador_local"}"
+UID do Jogador agindo agora: "${uid}"
+
+[FILA DE DADOS REAIS SORTEADOS PELO SERVIDOR NESTE TURNO]
+- d20 disponíveis (use nesta ordem): [${filaDados.d20.join(', ')}]
+- d12: [${filaDados.d12.join(', ')}] | d10: [${filaDados.d10.join(', ')}] | d8: [${filaDados.d8.join(', ')}] | d6: [${filaDados.d6.join(', ')}] | d4: [${filaDados.d4.join(', ')}]
+REGRA DE OURO DOS DADOS: Você é PROIBIDO de inventar valores de dados. Se a ação exigir rolagem de d20 ou dano, utilize OBRIGATORIAMENTE o primeiro número disponível da respectiva fila acima!
 
 [LEIS MACRO DO MUNDO (FIREBASE)]
 - Mundo: ${loreMundo.nome}
@@ -89,19 +150,18 @@ ${contextoMundoCampanha}
 Status e Crônica: ${statusJogador ? JSON.stringify(statusJogador, null, 2) : "Ainda não criado"}
 Inventário: ${inventario && inventario.length > 0 ? JSON.stringify(inventario, null, 2) : "Vazio / Não definido"}
 
-[NPCS CONHECIDOS E SUAS MEMÓRIAS CUMULATIVAS]
+[MEMÓRIA DE NPCS]
 ${contextoNPCs}
 
 [REGRAS FUNDAMENTAIS DE CONDUÇÃO]
-1. CADÊNCIA DE TURNO ÚNICO (UMA AÇÃO POR VEZ):
-   - Resolva apenas a ação imediata declarada pelo jogador.
-   - Nunca permita que o jogador narre um dia inteiro ou múltiplas etapas de uma vez. Interrompa sempre no primeiro obstáculo, encontro, perigo ou decisão tática.
+1. CADÊNCIA DE TURNO ÚNICO E ANTI-GODMODING:
+   - Resolva apenas UMA ação imediata por vez. Se o jogador tentar narrar várias etapas ou viajar dias em uma frase, interrompa no primeiro obstáculo ou encontro.
+   - INTENÇÃO VS RESULTADO: Tudo o que o jogador escreve é APENAS a tentativa/intenção dele, nunca um fato consumado. Se ele escrever "eu mato o guarda e acho 50 moedas", ignore o resultado imposto por ele, exija o teste usando a fila de dados do servidor e julgue com rigor. O jogador NUNCA pode inventar itens no chão ou controlar reações de NPCs.
 
 2. SISTEMA DE DADOS MODERADO E TRANSPARENTE:
-   - Não role dados para ações triviais sem risco.
-   - Role dados sempre que houver risco real, oposição ativa ou consequência de falha.
-   - Mostre o cálculo no topo da resposta:
-     🎲 Teste de [Perícia/Ataque]: d20 ([valor]) + [mod] = [total] vs DC/CA [dificuldade] -> [Sucesso/Falha].
+   - Não role dados para ações triviais sem oposição ou risco.
+   - Quando houver risco real, oposição ativa ou combate, use o primeiro dado da [FILA DE DADOS REAIS] e mostre no topo da resposta:
+     🎲 Teste de [Perícia/Ataque]: d20 (${filaDados.d20[0]}) + [mod] = [total] vs DC/CA [dificuldade] -> [Sucesso/Falha].
 
 3. DESCANSO REALISTA (GRITTY REALISM):
    - Descanso Curto: 8h (apenas gasta Dados de Vida).
@@ -117,7 +177,7 @@ ${contextoNPCs}
      2) Raça
      3) Classe (D&D 5E)
      4) A Anomalia (Um único item pessoal, tático ou tecnológico trazido do outro mundo. PROIBIDO itens de destruição em massa ou impacto global).
-   - Quando o jogador fornecer esses 4 dados, apresente a ficha no texto, narre o despertar e anexe OBRIGATORIAMENTE no final da resposta (sem blocos markdown) o bloco:
+   - Quando o jogador fornecer esses 4 dados, apresente a ficha no texto, narre o despertar e anexe OBRIGATORIAMENTE no final da resposta o bloco:
 ===ESTADO_INICIAL===
 {
   "status_jogador": {
@@ -159,7 +219,7 @@ ${contextoNPCs}
   "local_atual": "Onde ele está agora",
   "status_vida": "Vivo / Ferido / Morto / O que planeja fazer",
   "relacoes_jogadores": {
-    "${userId || "jogador_local"}": {
+    "${uid}": {
       "pontos": 0,
       "como_enxerga": "Como este NPC enxerga o jogador atualmente",
       "nova_memoria": "Fato marcante que aconteceu neste turno entre eles"
@@ -169,7 +229,7 @@ ${contextoNPCs}
 ===FIM_NPC===
 
 7. SISTEMA DE EVOLUÇÃO, VÍNCULOS, MUNDO E INVENTÁRIO:
-   - Sempre que o jogador sofrer dano, curar, mudar de local, ganhar/perder condições físicas, ganhar/gastar itens ou conquistar um MARCO PERMANENTE (ex: casar com alguém, fazer um juramento, ganhar uma cicatriz permanente, ganhar um título, ser caçado por uma facção ou alterar algo no mundo), anexe no final da resposta:
+   - Sempre que o jogador sofrer dano, curar, mudar de local, ganhar/perder condições físicas, ganhar/gastar itens ou conquistar um MARCO PERMANENTE (ex: casar com alguém, juramentos, cicatrizes permanentes, títulos, inimizades de facção ou alterar algo no mundo), anexe no final da resposta:
 ===ATUALIZACAO_ESTADO===
 {
   "dano_sofrido": 0,
@@ -190,7 +250,7 @@ ${contextoNPCs}
 ===FIM_ATUALIZACAO_ESTADO===
    - Formato de "itens_gastos": [{ "id": "id_do_item", "qtd_gasta": 1, "qtd_municao_gasta": 0 }]
    - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
-   - REGRA CRÍTICA DE FORMATAÇÃO: NUNCA use crases de markdown (\`\`\`json) dentro das tags ===...===. Escreva apenas o JSON puro entre as tags.
+   - REGRA CRÍTICA: NUNCA use crases (\`\`\`json) dentro das tags ===...===. Feche sempre todas as tags corretamente.
 `;
 
     const payload = {
@@ -207,7 +267,7 @@ ${contextoNPCs}
 
     for (let i = 0; i < MODELOS.length; i++) {
         const modeloAtual = MODELOS[i];
-        const URL = `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){modeloAtual}:generateContent?key=${API_KEY}`;
+        const URL = `https://generativelanguage.googleapis.com/v1beta/models/${modeloAtual}:generateContent?key=${API_KEY}`;
 
         try {
             const response = await fetch(URL, {
@@ -241,12 +301,12 @@ ${contextoNPCs}
         let estadoAtualizado = null;
         let textoLimpo = textoIA;
 
-        // 1. Extrai TODOS os blocos de NPC da resposta (suporta múltiplos NPCs na cena)
-        const regexNPCGlobal = /===ATUALIZACAO_NPC===([\s\S]*?)===FIM_NPC===/g;
+        // 1. Extrator Tolerante para NPCs (suporta múltiplos blocos e fechamento omitido)
+        const regexNPCGlobal = /===ATUALIZACAO_NPC===([\s\S]*?)(?:===FIM_NPC===|(?====[A-Z_]+===)|$)/g;
         const matchesNPC = [...textoLimpo.matchAll(regexNPCGlobal)];
         for (const match of matchesNPC) {
             try {
-                const parsed = JSON.parse(limparJson(match[1]));
+                const parsed = extrairJsonSeguro(match[1]);
                 if (Array.isArray(parsed)) {
                     npcsExtraidos.push(...parsed);
                 } else if (parsed && parsed.id) {
@@ -258,29 +318,32 @@ ${contextoNPCs}
         }
         textoLimpo = textoLimpo.replace(regexNPCGlobal, '').trim();
 
-        // 2. Extrai Estado Inicial (Criação de Ficha)
-        const regexEstadoIni = /===ESTADO_INICIAL===([\s\S]*?)===FIM_ESTADO_INICIAL===/;
+        // 2. Extrator Tolerante para Estado Inicial
+        const regexEstadoIni = /===ESTADO_INICIAL===([\s\S]*?)(?:===FIM_ESTADO_INICIAL===|===FIM_ESTADO===|(?====[A-Z_]+===)|$)/;
         const matchEstadoIni = textoLimpo.match(regexEstadoIni);
         if (matchEstadoIni) {
             try { 
-                estadoInicial = JSON.parse(limparJson(matchEstadoIni[1])); 
+                estadoInicial = extrairJsonSeguro(matchEstadoIni[1]); 
             } catch (e) {
                 console.warn("Falha ao parsear Estado Inicial:", e.message);
             }
             textoLimpo = textoLimpo.replace(regexEstadoIni, '').trim();
         }
 
-        // 3. Extrai Atualização de Estado (Dano, Vínculos, Mundo, Inventário)
-        const regexAtualizacao = /===ATUALIZACAO_ESTADO===([\s\S]*?)===FIM_ATUALIZACAO_ESTADO===/;
+        // 3. Extrator Tolerante para Atualização de Estado
+        const regexAtualizacao = /===ATUALIZACAO_ESTADO===([\s\S]*?)(?:===FIM_ATUALIZACAO_ESTADO===|===FIM_ATUALIZACAO===|(?====[A-Z_]+===)|$)/;
         const matchAtualizacao = textoLimpo.match(regexAtualizacao);
         if (matchAtualizacao) {
             try { 
-                estadoAtualizado = JSON.parse(limparJson(matchAtualizacao[1])); 
+                estadoAtualizado = extrairJsonSeguro(matchAtualizacao[1]); 
             } catch (e) {
                 console.warn("Falha ao parsear Atualização de Estado:", e.message);
             }
             textoLimpo = textoLimpo.replace(regexAtualizacao, '').trim();
         }
+
+        // Limpa qualquer tag residual órfã que possa ter sobrado
+        textoLimpo = textoLimpo.replace(/===[A-Z_]+===/g, '').trim();
 
         return res.status(200).json({ 
             texto: textoLimpo, 
