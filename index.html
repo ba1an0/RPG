@@ -50,6 +50,7 @@
         <h2>Aethelgard RPG</h2>
         <div class="header-actions" id="header-actions" style="display: none;">
             <span class="user-tag" id="user-display"></span>
+            <button class="btn-action" onclick="toggleMochila()">🎒 Ficha</button>
             <button class="btn-action btn-reset" onclick="reiniciarCampanha()">Resetar</button>
             <button class="btn-action" onclick="fazerLogout()">Sair</button>
         </div>
@@ -69,6 +70,19 @@
     <div class="input-area">
         <input type="text" id="mensagem" placeholder="Identifique-se para jogar..." disabled onkeypress="if(event.key === 'Enter') enviarMensagem()">
         <button class="btn-enviar" id="btn-enviar" disabled onclick="enviarMensagem()">Ação</button>
+    </div>
+
+    <!-- Modal da Mochila / Ficha -->
+    <div id="modal-mochila" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:999; justify-content:center; align-items:center; padding:15px;">
+        <div style="background:#1e1e1e; border:1px solid #444; border-radius:8px; width:100%; max-width:440px; max-height:85vh; display:flex; flex-direction:column; padding:15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:8px; margin-bottom:12px;">
+                <h3 style="color:#ff9800; font-size:16px;">🎒 Ficha e Mochila</h3>
+                <button class="btn-action" onclick="toggleMochila()">✕ Fechar</button>
+            </div>
+            <div id="conteudo-mochila" style="overflow-y:auto; flex:1; font-size:13px; line-height:1.5;">
+                <!-- Renderizado dinamicamente -->
+            </div>
+        </div>
     </div>
 
     <script type="module">
@@ -92,6 +106,8 @@
 
         let usuarioAtual = null;
         let historicoChat = [];
+        let statusJogador = null;
+        let inventario = [];
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -102,6 +118,8 @@
             } else {
                 usuarioAtual = null;
                 historicoChat = [];
+                statusJogador = null;
+                inventario = [];
                 document.getElementById('header-actions').style.display = 'none';
                 bloquearChat("Identifique-se para jogar...");
                 mostrarTelaLogin();
@@ -128,7 +146,6 @@
             return collection(db, "usuarios", usuarioAtual.uid, "campanhas", "principal", "npcs");
         }
 
-        // Puxa os NPCs já conhecidos da subcoleção
         async function obterNpcsConhecidos() {
             if (!usuarioAtual) return [];
             try {
@@ -142,7 +159,6 @@
             }
         }
 
-        // Salva ou atualiza um NPC na subcoleção
         async function salvarOuAtualizarNpc(npc) {
             if (!usuarioAtual || !npc || !npc.id) return;
             try {
@@ -163,6 +179,9 @@
 
                 if (docSnap.exists() && docSnap.data().historico && docSnap.data().historico.length > 0) {
                     historicoChat = docSnap.data().historico;
+                    statusJogador = docSnap.data().status_jogador || null;
+                    inventario = docSnap.data().inventario || [];
+
                     liberarChat();
                     chat.innerHTML = "";
                     historicoChat.forEach(msg => {
@@ -194,6 +213,10 @@
         }
 
         function mostrarTelaNovoJogo() {
+            historicoChat = [];
+            statusJogador = null;
+            inventario = [];
+
             const chat = document.getElementById('chat');
             chat.innerHTML = `
                 <div class="painel-central">
@@ -210,6 +233,8 @@
             try {
                 await setDoc(getCampanhaDocRef(), {
                     historico: historicoChat,
+                    status_jogador: statusJogador,
+                    inventario: inventario,
                     atualizadoEm: new Date(),
                     jogadorNome: usuarioAtual.displayName,
                     jogadorEmail: usuarioAtual.email
@@ -253,7 +278,9 @@
                     body: JSON.stringify({ 
                         historicoChat: historicoChat,
                         userId: usuarioAtual.uid,
-                        npcsConhecidos: npcsAtuais
+                        npcsConhecidos: npcsAtuais,
+                        statusJogador: statusJogador,
+                        inventario: inventario
                     })
                 });
 
@@ -269,6 +296,15 @@
                     "parts": [{ "text": data.texto }]
                 });
 
+                if (data.estadoInicial) {
+                    statusJogador = data.estadoInicial.status_jogador;
+                    inventario = data.estadoInicial.inventario || [];
+                }
+
+                if (data.estadoAtualizado) {
+                    aplicarAtualizacaoEstado(data.estadoAtualizado);
+                }
+
                 if (data.npcAtualizado) {
                     await salvarOuAtualizarNpc(data.npcAtualizado);
                 }
@@ -283,18 +319,15 @@
         window.reiniciarCampanha = async function() {
             if (!confirm("Tem certeza que deseja apagar essa campanha e recomeçar do zero? Os NPCs esquecerão tudo.")) return;
             try {
-                // 1. Apaga todos os NPCs da subcoleção para não deixar rastros órfãos
                 const npcsSnapshot = await getDocs(getNpcsCollectionRef());
                 const promessasDelecao = [];
                 npcsSnapshot.forEach((docNpc) => {
                     promessasDelecao.push(deleteDoc(docNpc.ref));
                 });
                 await Promise.all(promessasDelecao);
-        
-                // 2. Apaga o documento principal da campanha
+
                 await deleteDoc(getCampanhaDocRef());
-        
-                // 3. Volta para a tela inicial de criação
+
                 mostrarTelaNovoJogo();
             } catch (e) {
                 alert("Erro ao resetar: " + e.message);
@@ -325,7 +358,9 @@
                     body: JSON.stringify({ 
                         historicoChat: historicoChat,
                         userId: usuarioAtual.uid,
-                        npcsConhecidos: npcsAtuais
+                        npcsConhecidos: npcsAtuais,
+                        statusJogador: statusJogador,
+                        inventario: inventario
                     })
                 });
 
@@ -341,6 +376,15 @@
                     "parts": [{ "text": data.texto }]
                 });
 
+                if (data.estadoInicial) {
+                    statusJogador = data.estadoInicial.status_jogador;
+                    inventario = data.estadoInicial.inventario || [];
+                }
+
+                if (data.estadoAtualizado) {
+                    aplicarAtualizacaoEstado(data.estadoAtualizado);
+                }
+
                 if (data.npcAtualizado) {
                     await salvarOuAtualizarNpc(data.npcAtualizado);
                 }
@@ -353,6 +397,109 @@
                 adicionarNaTela('Alerta', error.message, 'system-msg');
             }
         };
+
+        function aplicarAtualizacaoEstado(mod) {
+            if (!statusJogador) return;
+
+            if (mod.dano_sofrido) {
+                statusJogador.hp_atual = Math.max(0, statusJogador.hp_atual - mod.dano_sofrido);
+            }
+            if (mod.cura_recebida) {
+                statusJogador.hp_atual = Math.min(statusJogador.hp_max, statusJogador.hp_atual + mod.cura_recebida);
+            }
+
+            if (mod.novas_condicoes && Array.isArray(mod.novas_condicoes)) {
+                if (!statusJogador.condicoes) statusJogador.condicoes = [];
+                mod.novas_condicoes.forEach(c => {
+                    if (!statusJogador.condicoes.includes(c)) statusJogador.condicoes.push(c);
+                });
+            }
+
+            if (mod.remover_condicoes && Array.isArray(mod.remover_condicoes)) {
+                if (statusJogador.condicoes) {
+                    statusJogador.condicoes = statusJogador.condicoes.filter(c => !mod.remover_condicoes.includes(c));
+                }
+            }
+
+            if (mod.itens_gastos && Array.isArray(mod.itens_gastos)) {
+                mod.itens_gastos.forEach(gasto => {
+                    const item = inventario.find(i => i.id === gasto.id || i.nome?.toLowerCase() === gasto.id?.toLowerCase());
+                    if (item) {
+                        if (gasto.qtd_municao_gasta && item.municao !== undefined) item.municao -= gasto.qtd_municao_gasta;
+                        if (gasto.qtd_gasta && item.qtd !== undefined) item.qtd -= gasto.qtd_gasta;
+                    }
+                });
+                inventario = inventario.filter(i => (i.qtd === undefined || i.qtd > 0));
+            }
+
+            if (mod.itens_ganhos && Array.isArray(mod.itens_ganhos)) {
+                mod.itens_ganhos.forEach(novo => inventario.push(novo));
+            }
+        }
+
+        window.toggleMochila = function() {
+            const modal = document.getElementById('modal-mochila');
+            if (modal.style.display === 'flex') {
+                modal.style.display = 'none';
+            } else {
+                renderizarMochila();
+                modal.style.display = 'flex';
+            }
+        };
+
+        function renderizarMochila() {
+            const box = document.getElementById('conteudo-mochila');
+            if (!statusJogador) {
+                box.innerHTML = "<p style='color:#888;'>Ficha ainda não gerada nesta campanha.</p>";
+                return;
+            }
+
+            const atrib = statusJogador.atributos || {};
+            const modAtrib = (val) => {
+                if (val === undefined) return '';
+                const m = Math.floor((val - 10) / 2);
+                return m >= 0 ? `+${m}` : `${m}`;
+            };
+
+            let atribHtml = '';
+            if (Object.keys(atrib).length > 0) {
+                atribHtml = `
+                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin: 8px 0; text-align:center;">
+                        ${Object.entries(atrib).map(([k, v]) => `
+                            <div style="background:#141414; border:1px solid #333; padding:5px 2px; border-radius:4px;">
+                                <span style="font-size:10px; color:#888;">${k.toUpperCase()}</span><br>
+                                <strong style="color:#eee;">${v}</strong> <span style="font-size:10px; color:#4caf50;">(${modAtrib(v)})</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            let itensHtml = inventario.map(i => `
+                <li style="margin-bottom:6px; border-bottom:1px solid #2a2a2a; padding-bottom:4px;">
+                    <strong style="color:#fff;">${i.nome}</strong> ${i.qtd ? `(x${i.qtd})` : ''} 
+                    ${i.municao !== undefined ? `<span style="color:#64b5f6;">[Munição: ${i.municao}]</span>` : ''}
+                    <br><span style="color:#777; font-size:11px;">${i.detalhes || ''}</span>
+                </li>
+            `).join('');
+
+            box.innerHTML = `
+                <div style="background:#252525; padding:10px; border-radius:6px; margin-bottom:10px; border-left:3px solid #ff9800;">
+                    <strong style="color:#4caf50; font-size:15px;">${statusJogador.nome || 'Viajante'}</strong><br>
+                    <span style="color:#ccc;">${statusJogador.raca || ''} ${statusJogador.classe || ''} (Nível ${statusJogador.nivel || 1})</span><br>
+                    <div style="margin-top:6px;">
+                        <strong>HP:</strong> <span style="color:${statusJogador.hp_atual <= 3 ? '#ff4444' : '#4caf50'};">${statusJogador.hp_atual}/${statusJogador.hp_max}</span> | 
+                        <strong>CA:</strong> ${statusJogador.ca || 10}
+                    </div>
+                    <div style="font-size:11px; color:#aaa; margin-top:4px;">
+                        <strong>Condições:</strong> ${statusJogador.condicoes && statusJogador.condicoes.length > 0 ? statusJogador.condicoes.join(', ') : 'Nenhuma'}
+                    </div>
+                </div>
+                ${atribHtml}
+                <h4 style="color:#aaa; margin: 10px 0 6px 0; font-size:13px;">Itens Carregados:</h4>
+                <ul style="list-style:none; padding:0;">${itensHtml || '<li style="color:#666;">Mochila vazia.</li>'}</ul>
+            `;
+        }
 
         function adicionarAvisoNpc(texto) {
             const chat = document.getElementById('chat');
