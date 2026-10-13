@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taverna-rpg-v1';
+const CACHE_NAME = 'tavern-rpg-v1';
 const ASSETS = [
   './',
   './index.html',
