@@ -40,6 +40,7 @@
 
         .input-area { display: flex; gap: 10px; padding-bottom: 10px; }
         input { flex: 1; padding: 15px; background: #222; color: white; border: 1px solid #444; border-radius: 8px; font-family: inherit; font-size: 16px; outline: none; }
+        input:disabled { background: #181818; color: #555; border-color: #2a2a2a; }
         button.btn-enviar { padding: 15px 20px; cursor: pointer; background: #4caf50; color: black; font-weight: bold; border: none; border-radius: 8px; font-size: 16px; white-space: nowrap; }
         button.btn-enviar:disabled { background: #333; color: #666; cursor: not-allowed; }
 
@@ -96,9 +97,9 @@
     </div>
 
     <script type="module">
-        import { initializeApp } from "[https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js](https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js)";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "[https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js](https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js)";
-        import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs } from "[https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js](https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js)";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyA-O5ZLR_eBHV4EdwYbaf6R_ua3xrbshEY",
@@ -121,6 +122,7 @@
         let estadoMundo = { local_atual: "Desconhecido", tempo_clima: "Incerto", fatos_mundo: [] };
         let npcsCache = [];
         let abaAtualModal = 'heroi';
+        let processandoTurno = false;
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -143,6 +145,7 @@
             inventario = [];
             estadoMundo = { local_atual: "Desconhecido", tempo_clima: "Incerto", fatos_mundo: [] };
             npcsCache = [];
+            processandoTurno = false;
         }
 
         window.fazerLogin = async function() {
@@ -200,7 +203,6 @@
                     const fatoNovo = relacaoJogadorNova.nova_memoria || relacaoJogadorNova.ultimo_fato;
                     if (fatoNovo && !historicoCumulativo.includes(fatoNovo)) {
                         historicoCumulativo.push(fatoNovo);
-                        // Mantém as 25 memórias mais importantes daquele NPC para não inflar infinitamente
                         if (historicoCumulativo.length > 25) historicoCumulativo.shift();
                     }
 
@@ -215,7 +217,7 @@
                         relacoes_jogadores: {
                             ...relacoesAntigas,
                             [uid]: {
-                                pontos: relacaoJogadorNova.pontos !== undefined ? relacaoJogadorNova.pontos : relacaoJogadorAntiga.pontos,
+                                pontos: relacaoJogadorNova.pontos !== undefined ? Number(relacaoJogadorNova.pontos) : relacaoJogadorAntiga.pontos,
                                 como_enxerga: relacaoJogadorNova.como_enxerga || relacaoJogadorAntiga.como_enxerga,
                                 historico: historicoCumulativo
                             }
@@ -225,7 +227,6 @@
                     const npcRef = doc(db, "usuarios", uid, "campanhas", "principal", "npcs", npcConsolidado.id);
                     await setDoc(npcRef, npcConsolidado, { merge: true });
 
-                    // Atualiza o cache local
                     const idx = npcsCache.findIndex(n => n.id === npcConsolidado.id);
                     if (idx >= 0) npcsCache[idx] = npcConsolidado;
                     else npcsCache.push(npcConsolidado);
@@ -297,9 +298,18 @@
             bloquearChat("Aguardando início da campanha...");
         }
 
+        // Proteção contra o limite de 1 MB do Firestore: mantém as últimas 60 mensagens salvas
         async function salvarJogo() {
             if (!usuarioAtual) return;
             try {
+                const LIMITE_FIRESTORE = 60;
+                if (historicoChat.length > LIMITE_FIRESTORE) {
+                    historicoChat = historicoChat.slice(-LIMITE_FIRESTORE);
+                    while (historicoChat.length > 0 && historicoChat[0].role !== 'user') {
+                        historicoChat.shift();
+                    }
+                }
+
                 await setDoc(getCampanhaDocRef(), {
                     historico: historicoChat,
                     status_jogador: statusJogador,
@@ -315,9 +325,11 @@
         }
 
         function liberarChat() {
-            document.getElementById('mensagem').disabled = false;
-            document.getElementById('mensagem').placeholder = "Declare sua ação imediata...";
+            const input = document.getElementById('mensagem');
+            input.disabled = false;
+            input.placeholder = "Declare sua ação imediata...";
             document.getElementById('btn-enviar').disabled = false;
+            input.focus();
         }
 
         function bloquearChat(placeholder) {
@@ -327,10 +339,10 @@
         }
 
         window.iniciarCampanha = async function() {
+            if (processandoTurno) return;
             const chat = document.getElementById('chat');
             chat.innerHTML = "";
             adicionarNaTela('Sistema', 'Despertando em Aethelgard...', 'system-msg', true);
-            liberarChat();
 
             const promptInicio = "Inicie a campanha de Aethelgard. Dê as boas-vindas sombrias ao mundo e exija minhas 4 definições iniciais para a ficha: Nome, Raça, Classe (D&D 5E) e a minha Anomalia (um item pessoal, tático ou tecnológico trazido do outro mundo, de uso individual e sem impacto em escala de destruição em massa).";
             
@@ -339,10 +351,11 @@
                 "parts": [{ "text": promptInicio }]
             });
 
-            await processarTurnoComServidor();
+            await processarTurnoComServidor(false);
         };
 
         window.enviarMensagem = async function() {
+            if (processandoTurno) return;
             const input = document.getElementById('mensagem');
             const textoUsuario = input.value.trim();
             if (!textoUsuario) return;
@@ -360,6 +373,9 @@
         };
 
         async function processarTurnoComServidor(reverterHistoricoSeFalhar = false) {
+            processandoTurno = true;
+            bloquearChat("O Mestre está julgando sua ação...");
+
             try {
                 const response = await fetch('/api/chat', {
                     method: 'POST',
@@ -414,6 +430,9 @@
                 removerCarregando();
                 if (reverterHistoricoSeFalhar) historicoChat.pop();
                 adicionarNaTela('Alerta', error.message, 'system-msg');
+            } finally {
+                processandoTurno = false;
+                liberarChat();
             }
         }
 
@@ -437,12 +456,10 @@
         function aplicarAtualizacaoEstado(mod) {
             if (!statusJogador) return;
 
-            // Atualizações de nível, CA e HP Máximo
             if (mod.novo_nivel) statusJogador.nivel = mod.novo_nivel;
             if (mod.nova_ca) statusJogador.ca = mod.nova_ca;
             if (mod.novo_hp_max) statusJogador.hp_max = mod.novo_hp_max;
 
-            // Dano e Cura
             if (mod.dano_sofrido) {
                 statusJogador.hp_atual = Math.max(0, statusJogador.hp_atual - Number(mod.dano_sofrido));
             }
@@ -450,7 +467,6 @@
                 statusJogador.hp_atual = Math.min(statusJogador.hp_max, statusJogador.hp_atual + Number(mod.cura_recebida));
             }
 
-            // Condições Físicas Temporárias
             if (!Array.isArray(statusJogador.condicoes)) statusJogador.condicoes = [];
             if (Array.isArray(mod.novas_condicoes)) {
                 mod.novas_condicoes.forEach(c => {
@@ -461,7 +477,6 @@
                 statusJogador.condicoes = statusJogador.condicoes.filter(c => !mod.remover_condicoes.includes(c));
             }
 
-            // Marcos Permanentes e Vínculos (Casamento, Juramentos, Cicatrizes, Títulos)
             if (!Array.isArray(statusJogador.marcos_e_vinculos)) statusJogador.marcos_e_vinculos = [];
             if (Array.isArray(mod.novos_marcos_personagem)) {
                 mod.novos_marcos_personagem.forEach(m => {
@@ -474,7 +489,6 @@
                 statusJogador.marcos_e_vinculos = statusJogador.marcos_e_vinculos.filter(m => !mod.remover_marcos_personagem.includes(m));
             }
 
-            // Estado do Mundo (Local, Clima e Consequências Globais/Locais)
             if (mod.novo_local) estadoMundo.local_atual = mod.novo_local;
             if (mod.novo_tempo_clima) estadoMundo.tempo_clima = mod.novo_tempo_clima;
             if (!Array.isArray(estadoMundo.fatos_mundo)) estadoMundo.fatos_mundo = [];
@@ -484,7 +498,6 @@
                 });
             }
 
-            // Gasto de Itens ou Munição
             if (Array.isArray(mod.itens_gastos)) {
                 mod.itens_gastos.forEach(gasto => {
                     const item = inventario.find(i => 
@@ -500,11 +513,9 @@
                         }
                     }
                 });
-                // Mantém armas/anomalias mesmo sem munição; remove apenas consumíveis/itens zerados
                 inventario = inventario.filter(i => i.tipo === 'anomalia' || i.qtd === undefined || i.qtd > 0);
             }
 
-            // Ganho de Itens (Soma inteligente se o item já existir na mochila)
             if (Array.isArray(mod.itens_ganhos)) {
                 mod.itens_ganhos.forEach(novo => {
                     if (!novo || !novo.nome) return;
