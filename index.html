@@ -281,9 +281,20 @@
         };
 
         window.reiniciarCampanha = async function() {
-            if (!confirm("Tem certeza que deseja apagar essa campanha e recomeçar do zero?")) return;
+            if (!confirm("Tem certeza que deseja apagar essa campanha e recomeçar do zero? Os NPCs esquecerão tudo.")) return;
             try {
+                // 1. Apaga todos os NPCs da subcoleção para não deixar rastros órfãos
+                const npcsSnapshot = await getDocs(getNpcsCollectionRef());
+                const promessasDelecao = [];
+                npcsSnapshot.forEach((docNpc) => {
+                    promessasDelecao.push(deleteDoc(docNpc.ref));
+                });
+                await Promise.all(promessasDelecao);
+        
+                // 2. Apaga o documento principal da campanha
                 await deleteDoc(getCampanhaDocRef());
+        
+                // 3. Volta para a tela inicial de criação
                 mostrarTelaNovoJogo();
             } catch (e) {
                 alert("Erro ao resetar: " + e.message);
