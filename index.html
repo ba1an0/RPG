@@ -42,6 +42,11 @@
         input { flex: 1; padding: 15px; background: #222; color: white; border: 1px solid #444; border-radius: 8px; font-family: inherit; font-size: 16px; outline: none; }
         button.btn-enviar { padding: 15px 20px; cursor: pointer; background: #4caf50; color: black; font-weight: bold; border: none; border-radius: 8px; font-size: 16px; white-space: nowrap; }
         button.btn-enviar:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+        /* Abas do Modal */
+        .modal-tabs { display: flex; gap: 6px; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px; }
+        .tab-btn { flex: 1; padding: 6px; background: #141414; color: #888; border: 1px solid #333; border-radius: 4px; font-family: inherit; font-size: 12px; cursor: pointer; }
+        .tab-btn.active { background: #2c2c2c; color: #ff9800; border-color: #ff9800; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -50,7 +55,7 @@
         <h2>Aethelgard RPG</h2>
         <div class="header-actions" id="header-actions" style="display: none;">
             <span class="user-tag" id="user-display"></span>
-            <button class="btn-action" onclick="toggleMochila()">🎒 Ficha</button>
+            <button class="btn-action" onclick="toggleMochila()">🎒 Diário</button>
             <button class="btn-action btn-reset" onclick="reiniciarCampanha()">Resetar</button>
             <button class="btn-action" onclick="fazerLogout()">Sair</button>
         </div>
@@ -72,12 +77,17 @@
         <button class="btn-enviar" id="btn-enviar" disabled onclick="enviarMensagem()">Ação</button>
     </div>
 
-    <!-- Modal da Mochila / Ficha -->
+    <!-- Modal de Diário (Ficha, Mochila e Mundo/NPCs) -->
     <div id="modal-mochila" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:999; justify-content:center; align-items:center; padding:15px;">
-        <div style="background:#1e1e1e; border:1px solid #444; border-radius:8px; width:100%; max-width:440px; max-height:85vh; display:flex; flex-direction:column; padding:15px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:8px; margin-bottom:12px;">
-                <h3 style="color:#ff9800; font-size:16px;">🎒 Ficha e Mochila</h3>
+        <div style="background:#1e1e1e; border:1px solid #444; border-radius:8px; width:100%; max-width:460px; max-height:85vh; display:flex; flex-direction:column; padding:15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="color:#ff9800; font-size:16px;">📖 Diário de Campanha</h3>
                 <button class="btn-action" onclick="toggleMochila()">✕ Fechar</button>
+            </div>
+            <div class="modal-tabs">
+                <button class="tab-btn active" id="tab-heroi" onclick="mudarAbaModal('heroi')">👤 Herói</button>
+                <button class="tab-btn" id="tab-mochila" onclick="mudarAbaModal('mochila')">🎒 Mochila</button>
+                <button class="tab-btn" id="tab-mundo" onclick="mudarAbaModal('mundo')">🌍 Mundo & NPCs</button>
             </div>
             <div id="conteudo-mochila" style="overflow-y:auto; flex:1; font-size:13px; line-height:1.5;">
                 <!-- Renderizado dinamicamente -->
@@ -86,9 +96,9 @@
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { initializeApp } from "[https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js](https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js)";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "[https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js](https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js)";
+        import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs } from "[https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js](https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js)";
 
         const firebaseConfig = {
             apiKey: "AIzaSyA-O5ZLR_eBHV4EdwYbaf6R_ua3xrbshEY",
@@ -108,6 +118,9 @@
         let historicoChat = [];
         let statusJogador = null;
         let inventario = [];
+        let estadoMundo = { local_atual: "Desconhecido", tempo_clima: "Incerto", fatos_mundo: [] };
+        let npcsCache = [];
+        let abaAtualModal = 'heroi';
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -117,14 +130,20 @@
                 await carregarCampanhaDoUsuario();
             } else {
                 usuarioAtual = null;
-                historicoChat = [];
-                statusJogador = null;
-                inventario = [];
+                limparEstadoLocal();
                 document.getElementById('header-actions').style.display = 'none';
                 bloquearChat("Identifique-se para jogar...");
                 mostrarTelaLogin();
             }
         });
+
+        function limparEstadoLocal() {
+            historicoChat = [];
+            statusJogador = null;
+            inventario = [];
+            estadoMundo = { local_atual: "Desconhecido", tempo_clima: "Incerto", fatos_mundo: [] };
+            npcsCache = [];
+        }
 
         window.fazerLogin = async function() {
             try {
@@ -152,21 +171,69 @@
                 const snapshot = await getDocs(getNpcsCollectionRef());
                 const npcs = [];
                 snapshot.forEach(docSnap => npcs.push(docSnap.data()));
+                npcsCache = npcs;
                 return npcs;
             } catch (e) {
                 console.warn("Erro ao buscar NPCs:", e);
-                return [];
+                return npcsCache;
             }
         }
 
-        async function salvarOuAtualizarNpc(npc) {
-            if (!usuarioAtual || !npc || !npc.id) return;
-            try {
-                const npcRef = doc(db, "usuarios", usuarioAtual.uid, "campanhas", "principal", "npcs", npc.id);
-                await setDoc(npcRef, npc, { merge: true });
-                adicionarAvisoNpc(`Memória de NPC atualizada: ${npc.nome}`);
-            } catch (e) {
-                console.error("Erro ao salvar NPC:", e);
+        // Salva múltiplos NPCs preservando o histórico cumulativo de memórias
+        async function salvarOuAtualizarListaNpcs(listaNpcs) {
+            if (!usuarioAtual || !Array.isArray(listaNpcs) || listaNpcs.length === 0) return;
+
+            for (const npcNovo of listaNpcs) {
+                if (!npcNovo || !npcNovo.id) continue;
+                try {
+                    const uid = usuarioAtual.uid;
+                    const npcExistente = npcsCache.find(n => n.id === npcNovo.id) || {};
+                    
+                    const relacoesAntigas = npcExistente.relacoes_jogadores || {};
+                    const relacaoJogadorAntiga = relacoesAntigas[uid] || { pontos: 0, como_enxerga: "Desconhecido", historico: [] };
+                    const relacaoJogadorNova = (npcNovo.relacoes_jogadores && npcNovo.relacoes_jogadores[uid]) || {};
+
+                    const historicoCumulativo = Array.isArray(relacaoJogadorAntiga.historico) 
+                        ? [...relacaoJogadorAntiga.historico] 
+                        : [];
+
+                    const fatoNovo = relacaoJogadorNova.nova_memoria || relacaoJogadorNova.ultimo_fato;
+                    if (fatoNovo && !historicoCumulativo.includes(fatoNovo)) {
+                        historicoCumulativo.push(fatoNovo);
+                        // Mantém as 25 memórias mais importantes daquele NPC para não inflar infinitamente
+                        if (historicoCumulativo.length > 25) historicoCumulativo.shift();
+                    }
+
+                    const npcConsolidado = {
+                        id: npcNovo.id,
+                        nome: npcNovo.nome || npcExistente.nome || "Desconhecido",
+                        idade: npcNovo.idade || npcExistente.idade || null,
+                        aparencia: npcNovo.aparencia || npcExistente.aparencia || "",
+                        personalidade: npcNovo.personalidade || npcExistente.personalidade || "",
+                        local_atual: npcNovo.local_atual || npcExistente.local_atual || "Desconhecido",
+                        status_vida: npcNovo.status_vida || npcExistente.status_vida || "Ativo",
+                        relacoes_jogadores: {
+                            ...relacoesAntigas,
+                            [uid]: {
+                                pontos: relacaoJogadorNova.pontos !== undefined ? relacaoJogadorNova.pontos : relacaoJogadorAntiga.pontos,
+                                como_enxerga: relacaoJogadorNova.como_enxerga || relacaoJogadorAntiga.como_enxerga,
+                                historico: historicoCumulativo
+                            }
+                        }
+                    };
+
+                    const npcRef = doc(db, "usuarios", uid, "campanhas", "principal", "npcs", npcConsolidado.id);
+                    await setDoc(npcRef, npcConsolidado, { merge: true });
+
+                    // Atualiza o cache local
+                    const idx = npcsCache.findIndex(n => n.id === npcConsolidado.id);
+                    if (idx >= 0) npcsCache[idx] = npcConsolidado;
+                    else npcsCache.push(npcConsolidado);
+
+                    adicionarAvisoNpc(`Memória de NPC registrada: ${npcConsolidado.nome}`);
+                } catch (e) {
+                    console.error("Erro ao salvar NPC:", e);
+                }
             }
         }
 
@@ -175,12 +242,17 @@
             chat.innerHTML = "<div class='painel-central'><p>Consultando registros arcanos...</p></div>";
 
             try {
-                const docSnap = await getDoc(getCampanhaDocRef());
+                const [docSnap] = await Promise.all([
+                    getDoc(getCampanhaDocRef()),
+                    obterNpcsConhecidos()
+                ]);
 
                 if (docSnap.exists() && docSnap.data().historico && docSnap.data().historico.length > 0) {
-                    historicoChat = docSnap.data().historico;
-                    statusJogador = docSnap.data().status_jogador || null;
-                    inventario = docSnap.data().inventario || [];
+                    const dados = docSnap.data();
+                    historicoChat = dados.historico;
+                    statusJogador = dados.status_jogador || null;
+                    inventario = dados.inventario || [];
+                    estadoMundo = dados.estado_mundo || { local_atual: "Desconhecido", tempo_clima: "Incerto", fatos_mundo: [] };
 
                     liberarChat();
                     chat.innerHTML = "";
@@ -213,10 +285,7 @@
         }
 
         function mostrarTelaNovoJogo() {
-            historicoChat = [];
-            statusJogador = null;
-            inventario = [];
-
+            limparEstadoLocal();
             const chat = document.getElementById('chat');
             chat.innerHTML = `
                 <div class="painel-central">
@@ -235,6 +304,7 @@
                     historico: historicoChat,
                     status_jogador: statusJogador,
                     inventario: inventario,
+                    estado_mundo: estadoMundo,
                     atualizadoEm: new Date(),
                     jogadorNome: usuarioAtual.displayName,
                     jogadorEmail: usuarioAtual.email
@@ -246,7 +316,7 @@
 
         function liberarChat() {
             document.getElementById('mensagem').disabled = false;
-            document.getElementById('mensagem').placeholder = "O que você faz?";
+            document.getElementById('mensagem').placeholder = "Declare sua ação imediata...";
             document.getElementById('btn-enviar').disabled = false;
         }
 
@@ -269,69 +339,7 @@
                 "parts": [{ "text": promptInicio }]
             });
 
-            try {
-                const npcsAtuais = await obterNpcsConhecidos();
-
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        historicoChat: historicoChat,
-                        userId: usuarioAtual.uid,
-                        npcsConhecidos: npcsAtuais,
-                        statusJogador: statusJogador,
-                        inventario: inventario
-                    })
-                });
-
-                const data = await response.json();
-                removerCarregando();
-
-                if (!response.ok) throw new Error(data.error || "O Mestre falhou.");
-
-                adicionarNaTela('Mestre', data.texto, 'ia-msg', false, data.modelo);
-                
-                historicoChat.push({
-                    "role": "model",
-                    "parts": [{ "text": data.texto }]
-                });
-
-                if (data.estadoInicial) {
-                    statusJogador = data.estadoInicial.status_jogador;
-                    inventario = data.estadoInicial.inventario || [];
-                }
-
-                if (data.estadoAtualizado) {
-                    aplicarAtualizacaoEstado(data.estadoAtualizado);
-                }
-
-                if (data.npcAtualizado) {
-                    await salvarOuAtualizarNpc(data.npcAtualizado);
-                }
-
-                await salvarJogo();
-            } catch (error) {
-                removerCarregando();
-                adicionarNaTela('Erro', error.message, 'system-msg');
-            }
-        };
-
-        window.reiniciarCampanha = async function() {
-            if (!confirm("Tem certeza que deseja apagar essa campanha e recomeçar do zero? Os NPCs esquecerão tudo.")) return;
-            try {
-                const npcsSnapshot = await getDocs(getNpcsCollectionRef());
-                const promessasDelecao = [];
-                npcsSnapshot.forEach((docNpc) => {
-                    promessasDelecao.push(deleteDoc(docNpc.ref));
-                });
-                await Promise.all(promessasDelecao);
-
-                await deleteDoc(getCampanhaDocRef());
-
-                mostrarTelaNovoJogo();
-            } catch (e) {
-                alert("Erro ao resetar: " + e.message);
-            }
+            await processarTurnoComServidor();
         };
 
         window.enviarMensagem = async function() {
@@ -348,19 +356,21 @@
             });
 
             adicionarNaTela('Sistema', 'Aguardando o destino...', 'system-msg', true);
+            await processarTurnoComServidor(true);
+        };
 
+        async function processarTurnoComServidor(reverterHistoricoSeFalhar = false) {
             try {
-                const npcsAtuais = await obterNpcsConhecidos();
-
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         historicoChat: historicoChat,
                         userId: usuarioAtual.uid,
-                        npcsConhecidos: npcsAtuais,
+                        npcsConhecidos: npcsCache,
                         statusJogador: statusJogador,
-                        inventario: inventario
+                        inventario: inventario,
+                        estadoMundo: estadoMundo
                     })
                 });
 
@@ -376,64 +386,147 @@
                     "parts": [{ "text": data.texto }]
                 });
 
+                // 1. Se gerou a Ficha Inicial
                 if (data.estadoInicial) {
-                    statusJogador = data.estadoInicial.status_jogador;
+                    statusJogador = data.estadoInicial.status_jogador || statusJogador;
+                    if (statusJogador && !Array.isArray(statusJogador.marcos_e_vinculos)) {
+                        statusJogador.marcos_e_vinculos = [];
+                    }
                     inventario = data.estadoInicial.inventario || [];
+                    if (data.estadoInicial.estado_mundo) {
+                        estadoMundo = data.estadoInicial.estado_mundo;
+                    }
                 }
 
+                // 2. Se houve alteração de HP, Vínculos, Mundo ou Mochila
                 if (data.estadoAtualizado) {
                     aplicarAtualizacaoEstado(data.estadoAtualizado);
                 }
 
-                if (data.npcAtualizado) {
-                    await salvarOuAtualizarNpc(data.npcAtualizado);
+                // 3. Se houve atualização de 1 ou mais NPCs na cena
+                if (data.npcsAtualizados && data.npcsAtualizados.length > 0) {
+                    await salvarOuAtualizarListaNpcs(data.npcsAtualizados);
                 }
 
                 await salvarJogo();
 
             } catch (error) {
                 removerCarregando();
-                historicoChat.pop(); 
+                if (reverterHistoricoSeFalhar) historicoChat.pop();
                 adicionarNaTela('Alerta', error.message, 'system-msg');
+            }
+        }
+
+        window.reiniciarCampanha = async function() {
+            if (!confirm("Tem certeza que deseja apagar essa campanha e recomeçar do zero? Os NPCs e vínculos esquecerão tudo.")) return;
+            try {
+                const npcsSnapshot = await getDocs(getNpcsCollectionRef());
+                const promessasDelecao = [];
+                npcsSnapshot.forEach((docNpc) => {
+                    promessasDelecao.push(deleteDoc(docNpc.ref));
+                });
+                await Promise.all(promessasDelecao);
+
+                await deleteDoc(getCampanhaDocRef());
+                mostrarTelaNovoJogo();
+            } catch (e) {
+                alert("Erro ao resetar: " + e.message);
             }
         };
 
         function aplicarAtualizacaoEstado(mod) {
             if (!statusJogador) return;
 
+            // Atualizações de nível, CA e HP Máximo
+            if (mod.novo_nivel) statusJogador.nivel = mod.novo_nivel;
+            if (mod.nova_ca) statusJogador.ca = mod.nova_ca;
+            if (mod.novo_hp_max) statusJogador.hp_max = mod.novo_hp_max;
+
+            // Dano e Cura
             if (mod.dano_sofrido) {
-                statusJogador.hp_atual = Math.max(0, statusJogador.hp_atual - mod.dano_sofrido);
+                statusJogador.hp_atual = Math.max(0, statusJogador.hp_atual - Number(mod.dano_sofrido));
             }
             if (mod.cura_recebida) {
-                statusJogador.hp_atual = Math.min(statusJogador.hp_max, statusJogador.hp_atual + mod.cura_recebida);
+                statusJogador.hp_atual = Math.min(statusJogador.hp_max, statusJogador.hp_atual + Number(mod.cura_recebida));
             }
 
-            if (mod.novas_condicoes && Array.isArray(mod.novas_condicoes)) {
-                if (!statusJogador.condicoes) statusJogador.condicoes = [];
+            // Condições Físicas Temporárias
+            if (!Array.isArray(statusJogador.condicoes)) statusJogador.condicoes = [];
+            if (Array.isArray(mod.novas_condicoes)) {
                 mod.novas_condicoes.forEach(c => {
-                    if (!statusJogador.condicoes.includes(c)) statusJogador.condicoes.push(c);
+                    if (c && !statusJogador.condicoes.includes(c)) statusJogador.condicoes.push(c);
                 });
             }
-
-            if (mod.remover_condicoes && Array.isArray(mod.remover_condicoes)) {
-                if (statusJogador.condicoes) {
-                    statusJogador.condicoes = statusJogador.condicoes.filter(c => !mod.remover_condicoes.includes(c));
-                }
+            if (Array.isArray(mod.remover_condicoes)) {
+                statusJogador.condicoes = statusJogador.condicoes.filter(c => !mod.remover_condicoes.includes(c));
             }
 
-            if (mod.itens_gastos && Array.isArray(mod.itens_gastos)) {
-                mod.itens_gastos.forEach(gasto => {
-                    const item = inventario.find(i => i.id === gasto.id || i.nome?.toLowerCase() === gasto.id?.toLowerCase());
-                    if (item) {
-                        if (gasto.qtd_municao_gasta && item.municao !== undefined) item.municao -= gasto.qtd_municao_gasta;
-                        if (gasto.qtd_gasta && item.qtd !== undefined) item.qtd -= gasto.qtd_gasta;
+            // Marcos Permanentes e Vínculos (Casamento, Juramentos, Cicatrizes, Títulos)
+            if (!Array.isArray(statusJogador.marcos_e_vinculos)) statusJogador.marcos_e_vinculos = [];
+            if (Array.isArray(mod.novos_marcos_personagem)) {
+                mod.novos_marcos_personagem.forEach(m => {
+                    if (m && !statusJogador.marcos_e_vinculos.includes(m)) {
+                        statusJogador.marcos_e_vinculos.push(m);
                     }
                 });
-                inventario = inventario.filter(i => (i.qtd === undefined || i.qtd > 0));
+            }
+            if (Array.isArray(mod.remover_marcos_personagem)) {
+                statusJogador.marcos_e_vinculos = statusJogador.marcos_e_vinculos.filter(m => !mod.remover_marcos_personagem.includes(m));
             }
 
-            if (mod.itens_ganhos && Array.isArray(mod.itens_ganhos)) {
-                mod.itens_ganhos.forEach(novo => inventario.push(novo));
+            // Estado do Mundo (Local, Clima e Consequências Globais/Locais)
+            if (mod.novo_local) estadoMundo.local_atual = mod.novo_local;
+            if (mod.novo_tempo_clima) estadoMundo.tempo_clima = mod.novo_tempo_clima;
+            if (!Array.isArray(estadoMundo.fatos_mundo)) estadoMundo.fatos_mundo = [];
+            if (Array.isArray(mod.novos_fatos_mundo)) {
+                mod.novos_fatos_mundo.forEach(f => {
+                    if (f && !estadoMundo.fatos_mundo.includes(f)) estadoMundo.fatos_mundo.push(f);
+                });
+            }
+
+            // Gasto de Itens ou Munição
+            if (Array.isArray(mod.itens_gastos)) {
+                mod.itens_gastos.forEach(gasto => {
+                    const item = inventario.find(i => 
+                        (i.id && gasto.id && i.id.toLowerCase() === gasto.id.toLowerCase()) ||
+                        (i.nome && gasto.id && i.nome.toLowerCase() === gasto.id.toLowerCase())
+                    );
+                    if (item) {
+                        if (gasto.qtd_municao_gasta && item.municao !== undefined) {
+                            item.municao = Math.max(0, item.municao - Number(gasto.qtd_municao_gasta));
+                        }
+                        if (gasto.qtd_gasta && item.qtd !== undefined) {
+                            item.qtd -= Number(gasto.qtd_gasta);
+                        }
+                    }
+                });
+                // Mantém armas/anomalias mesmo sem munição; remove apenas consumíveis/itens zerados
+                inventario = inventario.filter(i => i.tipo === 'anomalia' || i.qtd === undefined || i.qtd > 0);
+            }
+
+            // Ganho de Itens (Soma inteligente se o item já existir na mochila)
+            if (Array.isArray(mod.itens_ganhos)) {
+                mod.itens_ganhos.forEach(novo => {
+                    if (!novo || !novo.nome) return;
+                    const existente = inventario.find(i => 
+                        (i.id && novo.id && i.id.toLowerCase() === novo.id.toLowerCase()) ||
+                        (i.nome.toLowerCase() === novo.nome.toLowerCase())
+                    );
+                    if (existente) {
+                        if (novo.qtd !== undefined) existente.qtd = (existente.qtd || 1) + Number(novo.qtd);
+                        if (novo.municao !== undefined) existente.municao = (existente.municao || 0) + Number(novo.municao);
+                        if (novo.detalhes) existente.detalhes = novo.detalhes;
+                    } else {
+                        inventario.push({
+                            id: novo.id || novo.nome.toLowerCase().replace(/\s+/g, '_'),
+                            nome: novo.nome,
+                            tipo: novo.tipo || 'item',
+                            qtd: novo.qtd !== undefined ? Number(novo.qtd) : 1,
+                            ...(novo.municao !== undefined ? { municao: Number(novo.municao) } : {}),
+                            detalhes: novo.detalhes || ''
+                        });
+                    }
+                });
             }
         }
 
@@ -447,6 +540,14 @@
             }
         };
 
+        window.mudarAbaModal = function(aba) {
+            abaAtualModal = aba;
+            document.getElementById('tab-heroi').classList.toggle('active', aba === 'heroi');
+            document.getElementById('tab-mochila').classList.toggle('active', aba === 'mochila');
+            document.getElementById('tab-mundo').classList.toggle('active', aba === 'mundo');
+            renderizarMochila();
+        };
+
         function renderizarMochila() {
             const box = document.getElementById('conteudo-mochila');
             if (!statusJogador) {
@@ -454,51 +555,103 @@
                 return;
             }
 
-            const atrib = statusJogador.atributos || {};
-            const modAtrib = (val) => {
-                if (val === undefined) return '';
-                const m = Math.floor((val - 10) / 2);
-                return m >= 0 ? `+${m}` : `${m}`;
-            };
+            if (abaAtualModal === 'heroi') {
+                const atrib = statusJogador.atributos || {};
+                const modAtrib = (val) => {
+                    if (val === undefined) return '';
+                    const m = Math.floor((val - 10) / 2);
+                    return m >= 0 ? `+${m}` : `${m}`;
+                };
 
-            let atribHtml = '';
-            if (Object.keys(atrib).length > 0) {
-                atribHtml = `
-                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin: 8px 0; text-align:center;">
-                        ${Object.entries(atrib).map(([k, v]) => `
-                            <div style="background:#141414; border:1px solid #333; padding:5px 2px; border-radius:4px;">
-                                <span style="font-size:10px; color:#888;">${k.toUpperCase()}</span><br>
-                                <strong style="color:#eee;">${v}</strong> <span style="font-size:10px; color:#4caf50;">(${modAtrib(v)})</span>
-                            </div>
-                        `).join('')}
+                let atribHtml = '';
+                if (Object.keys(atrib).length > 0) {
+                    atribHtml = `
+                        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin: 8px 0; text-align:center;">
+                            ${Object.entries(atrib).map(([k, v]) => `
+                                <div style="background:#141414; border:1px solid #333; padding:5px 2px; border-radius:4px;">
+                                    <span style="font-size:10px; color:#888;">${k.toUpperCase()}</span><br>
+                                    <strong style="color:#eee;">${v}</strong> <span style="font-size:10px; color:#4caf50;">(${modAtrib(v)})</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
+                const marcos = statusJogador.marcos_e_vinculos || [];
+                const marcosHtml = marcos.length > 0
+                    ? marcos.map(m => `<li style="margin-bottom:4px; color:#ddd;">• ${m}</li>`).join('')
+                    : `<li style="color:#666;">Nenhum vínculo ou marco registrado ainda.</li>`;
+
+                box.innerHTML = `
+                    <div style="background:#252525; padding:10px; border-radius:6px; margin-bottom:10px; border-left:3px solid #ff9800;">
+                        <strong style="color:#4caf50; font-size:15px;">${statusJogador.nome || 'Viajante'}</strong><br>
+                        <span style="color:#ccc;">${statusJogador.raca || ''} ${statusJogador.classe || ''} (Nível ${statusJogador.nivel || 1})</span><br>
+                        <div style="margin-top:6px;">
+                            <strong>HP:</strong> <span style="color:${statusJogador.hp_atual <= 3 ? '#ff4444' : '#4caf50'};">${statusJogador.hp_atual}/${statusJogador.hp_max}</span> | 
+                            <strong>CA:</strong> ${statusJogador.ca || 10}
+                        </div>
+                        <div style="font-size:11px; color:#aaa; margin-top:4px;">
+                            <strong>Condições Físicas:</strong> ${statusJogador.condicoes && statusJogador.condicoes.length > 0 ? statusJogador.condicoes.join(', ') : 'Nenhuma'}
+                        </div>
                     </div>
+                    ${atribHtml}
+                    <h4 style="color:#ff9800; margin: 12px 0 6px 0; font-size:13px;">📜 Crônica, Títulos & Vínculos:</h4>
+                    <ul style="list-style:none; padding:8px; background:#161616; border:1px solid #2c2c2c; border-radius:6px;">
+                        ${marcosHtml}
+                    </ul>
+                `;
+            } else if (abaAtualModal === 'mochila') {
+                let itensHtml = inventario.map(i => `
+                    <li style="margin-bottom:8px; border-bottom:1px solid #2a2a2a; padding-bottom:6px;">
+                        <strong style="color:#fff;">${i.nome}</strong> ${i.qtd ? `<span style="color:#4caf50;">(x${i.qtd})</span>` : ''} 
+                        ${i.municao !== undefined ? `<span style="color:#64b5f6;">[Munição: ${i.municao}]</span>` : ''}
+                        <br><span style="color:#888; font-size:11px;">${i.detalhes || ''}</span>
+                    </li>
+                `).join('');
+
+                box.innerHTML = `
+                    <h4 style="color:#aaa; margin-bottom:8px; font-size:13px;">Equipamento e Recursos:</h4>
+                    <ul style="list-style:none; padding:0;">${itensHtml || '<li style="color:#666;">Mochila vazia.</li>'}</ul>
+                `;
+            } else if (abaAtualModal === 'mundo') {
+                const fatos = estadoMundo.fatos_mundo || [];
+                const fatosHtml = fatos.length > 0
+                    ? fatos.map(f => `<li style="margin-bottom:4px; color:#ccc;">• ${f}</li>`).join('')
+                    : `<li style="color:#666;">Nenhuma alteração drástica registrada ainda.</li>`;
+
+                const uid = usuarioAtual?.uid;
+                const npcsHtml = npcsCache.length > 0
+                    ? npcsCache.map(n => {
+                        const rel = (n.relacoes_jogadores && n.relacoes_jogadores[uid]) || { pontos: 0, como_enxerga: 'Indiferente', historico: [] };
+                        const corPontos = rel.pontos > 10 ? '#4caf50' : (rel.pontos < -10 ? '#ff4444' : '#ff9800');
+                        const ultimasMem = (rel.historico || []).slice(-3).map(h => `<div style="font-size:11px; color:#888;">- ${h}</div>`).join('');
+                        return `
+                            <div style="background:#161616; border:1px solid #2c2c2c; padding:8px; border-radius:6px; margin-bottom:8px;">
+                                <div style="display:flex; justify-content:space-between;">
+                                    <strong style="color:#64b5f6;">${n.nome}</strong>
+                                    <span style="color:${corPontos}; font-weight:bold;">Afinidade: ${rel.pontos}</span>
+                                </div>
+                                <div style="font-size:11px; color:#aaa; margin:3px 0;">📍 ${n.local_atual || 'Desconhecido'} | ${n.status_vida || 'Ativo'}</div>
+                                <div style="font-size:11px; color:#ddd; margin-bottom:4px;"><em>"${rel.como_enxerga || ''}"</em></div>
+                                ${ultimasMem}
+                            </div>
+                        `;
+                    }).join('')
+                    : `<p style="color:#666;">Nenhum NPC registrado ainda.</p>`;
+
+                box.innerHTML = `
+                    <div style="background:#252525; padding:8px; border-radius:6px; margin-bottom:10px;">
+                        <div><strong>📍 Local Atual:</strong> <span style="color:#ff9800;">${estadoMundo.local_atual || 'Desconhecido'}</span></div>
+                        <div style="font-size:11px; color:#aaa; margin-top:4px;"><strong>⏳ Tempo/Clima:</strong> ${estadoMundo.tempo_clima || 'Incerto'}</div>
+                    </div>
+                    <h4 style="color:#aaa; margin:10px 0 6px 0; font-size:13px;">🔥 Fatos e Consequências no Mundo:</h4>
+                    <ul style="list-style:none; padding:8px; background:#161616; border:1px solid #2c2c2c; border-radius:6px; margin-bottom:12px;">
+                        ${fatosHtml}
+                    </ul>
+                    <h4 style="color:#aaa; margin:10px 0 6px 0; font-size:13px;">👥 NPCs Conhecidos (${npcsCache.length}):</h4>
+                    ${npcsHtml}
                 `;
             }
-
-            let itensHtml = inventario.map(i => `
-                <li style="margin-bottom:6px; border-bottom:1px solid #2a2a2a; padding-bottom:4px;">
-                    <strong style="color:#fff;">${i.nome}</strong> ${i.qtd ? `(x${i.qtd})` : ''} 
-                    ${i.municao !== undefined ? `<span style="color:#64b5f6;">[Munição: ${i.municao}]</span>` : ''}
-                    <br><span style="color:#777; font-size:11px;">${i.detalhes || ''}</span>
-                </li>
-            `).join('');
-
-            box.innerHTML = `
-                <div style="background:#252525; padding:10px; border-radius:6px; margin-bottom:10px; border-left:3px solid #ff9800;">
-                    <strong style="color:#4caf50; font-size:15px;">${statusJogador.nome || 'Viajante'}</strong><br>
-                    <span style="color:#ccc;">${statusJogador.raca || ''} ${statusJogador.classe || ''} (Nível ${statusJogador.nivel || 1})</span><br>
-                    <div style="margin-top:6px;">
-                        <strong>HP:</strong> <span style="color:${statusJogador.hp_atual <= 3 ? '#ff4444' : '#4caf50'};">${statusJogador.hp_atual}/${statusJogador.hp_max}</span> | 
-                        <strong>CA:</strong> ${statusJogador.ca || 10}
-                    </div>
-                    <div style="font-size:11px; color:#aaa; margin-top:4px;">
-                        <strong>Condições:</strong> ${statusJogador.condicoes && statusJogador.condicoes.length > 0 ? statusJogador.condicoes.join(', ') : 'Nenhuma'}
-                    </div>
-                </div>
-                ${atribHtml}
-                <h4 style="color:#aaa; margin: 10px 0 6px 0; font-size:13px;">Itens Carregados:</h4>
-                <ul style="list-style:none; padding:0;">${itensHtml || '<li style="color:#666;">Mochila vazia.</li>'}</ul>
-            `;
         }
 
         function adicionarAvisoNpc(texto) {
