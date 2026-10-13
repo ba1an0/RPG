@@ -40,7 +40,7 @@ export default async function handler(req, res) {
     } = req.body;
 
     const API_KEY = process.env.GEMINI_API_KEY; 
-    const MODELOS = ["gemini-3.8-flash", "gemini-2.5-flash"];
+    const MODELOS = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
 
     // 1. BUSCA O MUNDO MACRO DIRETO DO FIREBASE (REST API)
     let loreMundo = {
