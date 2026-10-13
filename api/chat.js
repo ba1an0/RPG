@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     // 3. Puxa a chave SECRETA que vai ficar escondida no painel do Vercel
     const API_KEY = process.env.GEMINI_API_KEY; 
 
-    const MODELOS = ["gemini-3.8-flash", "gemini-2.5-flash"];
+    const MODELOS = ["gemini-1.5-flash"];
     
     // As regras do seu RPG (Ficam escondidas no servidor também)
     const payload = {
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     // O Motor Inteligente de Fallback rodando na Nuvem
     for (let i = 0; i < MODELOS.length; i++) {
         const modeloAtual = MODELOS[i];
-        const URL = `https://generativelanguage.googleapis.com/v1beta/models/${modeloAtual}:generateContent?key=${API_KEY}`;
+        const URL = `https://generativelanguage.googleapis.com/v1/models/${modeloAtual}:generateContent?key=${API_KEY}`;
 
         try {
             const response = await fetch(URL, {
