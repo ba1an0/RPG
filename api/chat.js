@@ -100,7 +100,8 @@ export default async function handler(req, res) {
             const localNpc = (npc.local_atual || "").toLowerCase();
             const nomeNpc = (npc.nome || "").toLowerCase();
             const mesmoLocal = localAtual && localNpc && (localAtual.includes(localNpc) || localNpc.includes(localAtual));
-            const foiCitado = nomeNpc && ultimaMsgUsuario.includes(nomeNpc.split(' ')[0]);
+            const partesNome = nomeNpc.split(/[\s,_-]+/).filter(p => p.length > 2);
+            const foiCitado = partesNome.some(parte => ultimaMsgUsuario.includes(parte));
 
             if (npcsConhecidos.length <= 8 || mesmoLocal || foiCitado) {
                 npcsLocais.push(npc);
@@ -217,7 +218,7 @@ ${contextoNPCs}
   "aparencia": "Descrição visual curta",
   "personalidade": "Traços de comportamento",
   "local_atual": "Onde ele está agora",
-  "status_vida": "Vivo / Ferido / Morto / O que planeja fazer",
+  "status_vida": "Estado físico atual, o que está fazendo, segredos descobertos ou observações livres sobre ele",
   "relacoes_jogadores": {
     "${uid}": {
       "pontos": 0,
