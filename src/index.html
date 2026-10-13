@@ -1,0 +1,79 @@
+<script>
+        // O Service Worker PWA continua aqui
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch(err => console.error(err));
+            });
+        }
+
+        let historicoChat = [];
+
+        async function enviarMensagem() {
+            const input = document.getElementById('mensagem');
+            const textoUsuario = input.value.trim();
+            if (!textoUsuario) return;
+
+            adicionarNaTela('Você', textoUsuario, 'user-msg');
+            input.value = ''; 
+
+            historicoChat.push({
+                "role": "user",
+                "parts": [{ "text": textoUsuario }]
+            });
+
+            adicionarNaTela('Sistema', 'Rolando dados...', 'system-msg', true);
+
+            try {
+                // A MÁGICA AQUI: O celular chama a SUA própria API no Vercel
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ historicoChat: historicoChat }) // Manda só o histórico
+                });
+
+                const data = await response.json();
+                removerCarregando();
+
+                if (!response.ok) throw new Error(data.error || "A magia falhou no servidor.");
+
+                // Adiciona a resposta da IA na tela
+                adicionarNaTela('Mestre', data.texto, 'ia-msg', false, data.modelo);
+                
+                // Salva no histórico do celular
+                historicoChat.push({
+                    "role": "model",
+                    "parts": [{ "text": data.texto }]
+                });
+
+            } catch (error) {
+                console.error("Erro:", error);
+                removerCarregando();
+                historicoChat.pop(); // Tira a última mensagem pra tentar de novo
+                adicionarNaTela('Alerta', error.message, 'system-msg');
+            }
+        }
+
+        // --- Funções Visuais ---
+        function adicionarNaTela(remetente, texto, classe, isTemp = false, modeloBadge = null) {
+            const chat = document.getElementById('chat');
+            const div = document.createElement('div');
+            div.className = classe;
+            if (isTemp) div.id = "carregando-msg";
+            
+            const textoFormatado = texto.replace(/\n/g, '<br>');
+
+            if (modeloBadge) {
+                div.innerHTML = `<strong>${remetente}</strong><span class="badge-modelo">⚙️ ${modeloBadge}</span><br><br>${textoFormatado}`;
+            } else {
+                div.innerHTML = `<strong>${remetente}:</strong> ${textoFormatado}`;
+            }
+            
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight; 
+        }
+
+        function removerCarregando() {
+            const temp = document.getElementById('carregando-msg');
+            if (temp) temp.remove();
+        }
+    </script>
