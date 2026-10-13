@@ -27,8 +27,8 @@
         .ia-msg { color: #ff9800; margin-bottom: 15px; border-left: 3px solid #ff9800; padding-left: 10px; line-height: 1.6; }
         .system-msg { color: #888; font-style: italic; margin-bottom: 15px; }
         .badge-modelo { font-size: 10px; background: #333; color: #aaa; padding: 2px 5px; border-radius: 4px; margin-left: 8px; vertical-align: middle; border: 1px solid #555; }
+        .npc-toast { font-size: 11px; color: #64b5f6; margin-bottom: 10px; padding: 4px 8px; background: #0d2238; border-left: 3px solid #2196f3; border-radius: 4px; }
         
-        /* Telas de Início / Boas-vindas */
         .painel-central { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; gap: 15px; padding: 20px; }
         .painel-central p { color: #aaa; font-size: 14px; line-height: 1.5; max-width: 400px; }
         
@@ -56,7 +56,6 @@
     </div>
     
     <div id="chat">
-        <!-- Renderizado dinamicamente pelo estado de Auth -->
         <div class="painel-central" id="painel-login">
             <h3 style="color: #ff4444;">Portões de Aethelgard</h3>
             <p>Identifique-se antes de adentrar as terras sombrias.</p>
@@ -75,7 +74,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyA-O5ZLR_eBHV4EdwYbaf6R_ua3xrbshEY",
@@ -94,7 +93,6 @@
         let usuarioAtual = null;
         let historicoChat = [];
 
-        // Observa se o usuário está logado ou deslogado
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 usuarioAtual = user;
@@ -123,8 +121,37 @@
         };
 
         function getCampanhaDocRef() {
-            // Isolamento por usuário: usuarios/{uid}/campanhas/principal
             return doc(db, "usuarios", usuarioAtual.uid, "campanhas", "principal");
+        }
+
+        function getNpcsCollectionRef() {
+            return collection(db, "usuarios", usuarioAtual.uid, "campanhas", "principal", "npcs");
+        }
+
+        // Puxa os NPCs já conhecidos da subcoleção
+        async function obterNpcsConhecidos() {
+            if (!usuarioAtual) return [];
+            try {
+                const snapshot = await getDocs(getNpcsCollectionRef());
+                const npcs = [];
+                snapshot.forEach(docSnap => npcs.push(docSnap.data()));
+                return npcs;
+            } catch (e) {
+                console.warn("Erro ao buscar NPCs:", e);
+                return [];
+            }
+        }
+
+        // Salva ou atualiza um NPC na subcoleção
+        async function salvarOuAtualizarNpc(npc) {
+            if (!usuarioAtual || !npc || !npc.id) return;
+            try {
+                const npcRef = doc(db, "usuarios", usuarioAtual.uid, "campanhas", "principal", "npcs", npc.id);
+                await setDoc(npcRef, npc, { merge: true });
+                adicionarAvisoNpc(`Memória de NPC atualizada: ${npc.nome}`);
+            } catch (e) {
+                console.error("Erro ao salvar NPC:", e);
+            }
         }
 
         async function carregarCampanhaDoUsuario() {
@@ -218,12 +245,15 @@
             });
 
             try {
+                const npcsAtuais = await obterNpcsConhecidos();
+
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         historicoChat: historicoChat,
-                        userId: usuarioAtual.uid 
+                        userId: usuarioAtual.uid,
+                        npcsConhecidos: npcsAtuais
                     })
                 });
 
@@ -238,6 +268,10 @@
                     "role": "model",
                     "parts": [{ "text": data.texto }]
                 });
+
+                if (data.npcAtualizado) {
+                    await salvarOuAtualizarNpc(data.npcAtualizado);
+                }
 
                 await salvarJogo();
             } catch (error) {
@@ -272,12 +306,15 @@
             adicionarNaTela('Sistema', 'Aguardando o destino...', 'system-msg', true);
 
             try {
+                const npcsAtuais = await obterNpcsConhecidos();
+
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         historicoChat: historicoChat,
-                        userId: usuarioAtual.uid 
+                        userId: usuarioAtual.uid,
+                        npcsConhecidos: npcsAtuais
                     })
                 });
 
@@ -293,6 +330,10 @@
                     "parts": [{ "text": data.texto }]
                 });
 
+                if (data.npcAtualizado) {
+                    await salvarOuAtualizarNpc(data.npcAtualizado);
+                }
+
                 await salvarJogo();
 
             } catch (error) {
@@ -301,6 +342,15 @@
                 adicionarNaTela('Alerta', error.message, 'system-msg');
             }
         };
+
+        function adicionarAvisoNpc(texto) {
+            const chat = document.getElementById('chat');
+            const div = document.createElement('div');
+            div.className = 'npc-toast';
+            div.innerHTML = `👁️ ${texto}`;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
 
         function adicionarNaTela(remetente, texto, classe, isTemp = false, modeloBadge = null) {
             const chat = document.getElementById('chat');
