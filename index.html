@@ -2,59 +2,170 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <!-- Meta tags essenciais para PWA e Mobile -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#121212">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="/manifest.json">
     
-    <title>Taverna RPG</title>
+    <title>Aethelgard RPG</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: #121212; color: #e0e0e0; font-family: monospace; padding: 15px; height: 100vh; display: flex; flex-direction: column; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        h2 { font-size: 20px; color: #fff; text-align: center; flex: 1; }
-        .btn-reset { font-size: 10px; padding: 5px 8px; background: #333; color: #aaa; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        h2 { font-size: 18px; color: #fff; letter-spacing: 1px; }
+        .btn-reset { font-size: 11px; padding: 4px 8px; background: #222; color: #888; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+        .btn-reset:hover { background: #331111; color: #ff6666; border-color: #aa3333; }
         
         #chat { flex: 1; overflow-y: auto; border: 1px solid #333; padding: 15px; margin-bottom: 15px; background: #1a1a1a; border-radius: 8px; }
         .user-msg { color: #4caf50; margin-bottom: 15px; border-left: 3px solid #4caf50; padding-left: 10px; }
-        .ia-msg { color: #ff9800; margin-bottom: 15px; border-left: 3px solid #ff9800; padding-left: 10px; line-height: 1.5; }
-        .system-msg { color: #888; font-style: italic; margin-bottom: 15px; font-weight: bold; }
+        .ia-msg { color: #ff9800; margin-bottom: 15px; border-left: 3px solid #ff9800; padding-left: 10px; line-height: 1.6; }
+        .system-msg { color: #888; font-style: italic; margin-bottom: 15px; }
         .badge-modelo { font-size: 10px; background: #333; color: #aaa; padding: 2px 5px; border-radius: 4px; margin-left: 8px; vertical-align: middle; border: 1px solid #555; }
         
-        /* Ajuste do input para ficar estilo WhatsApp no mobile */
+        /* Painel de Início / Despertar */
+        #painel-inicio { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; gap: 15px; padding: 20px; }
+        #painel-inicio p { color: #aaa; font-size: 14px; line-height: 1.5; max-width: 400px; }
+        .btn-iniciar { padding: 16px 28px; background: #8b0000; color: #fff; font-weight: bold; border: 1px solid #ff4444; border-radius: 8px; font-size: 16px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-iniciar:active { background: #660000; }
+
         .input-area { display: flex; gap: 10px; padding-bottom: 10px; }
         input { flex: 1; padding: 15px; background: #222; color: white; border: 1px solid #444; border-radius: 8px; font-family: inherit; font-size: 16px; outline: none; }
         button.btn-enviar { padding: 15px 20px; cursor: pointer; background: #4caf50; color: black; font-weight: bold; border: none; border-radius: 8px; font-size: 16px; white-space: nowrap; }
-        button.btn-enviar:active { background: #45a049; }
+        button.btn-enviar:disabled { background: #333; color: #666; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h2>Taverna Dark Fantasy</h2>
+        <h2>Aethelgard: Dark Fantasy</h2>
+        <button class="btn-reset" onclick="reiniciarCampanha()">Resetar Campanha</button>
     </div>
     
-    <div id="chat"></div>
+    <div id="chat">
+        <!-- Se não houver campanha, aparece este painel -->
+        <div id="painel-inicio">
+            <h3 style="color: #ff4444;">Nenhuma Campanha Ativa</h3>
+            <p>O continente de Aethelgard jaz em ruína e intriga. Quando estiver pronto para entrar nesse mundo e aceitar suas consequências, dê o comando.</p>
+            <button class="btn-iniciar" onclick="iniciarCampanha()">Despertar em Aethelgard</button>
+        </div>
+    </div>
     
     <div class="input-area">
-        <input type="text" id="mensagem" placeholder="O que você faz?" onkeypress="if(event.key === 'Enter') enviarMensagem()">
-        <button class="btn-enviar" onclick="enviarMensagem()">Rolar</button>
+        <input type="text" id="mensagem" placeholder="Aguardando início da campanha..." disabled onkeypress="if(event.key === 'Enter') enviarMensagem()">
+        <button class="btn-enviar" id="btn-enviar" disabled onclick="enviarMensagem()">Ação</button>
     </div>
 
-    <script>
-        // REGISTRO DO SERVICE WORKER (Para o app instalar no celular)
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').catch(err => console.error(err));
-            });
-        }
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA-O5ZLR_eBHV4EdwYbaf6R_ua3xrbshEY",
+            authDomain: "tavern-rpg-567f2.firebaseapp.com",
+            projectId: "tavern-rpg-567f2",
+            storageBucket: "tavern-rpg-567f2.firebasestorage.app",
+            messagingSenderId: "975518537075",
+            appId: "1:975518537075:web:8905162af19318f13a2106"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const SALA_ID = "campanha_aethelgard";
 
         let historicoChat = [];
 
-        async function enviarMensagem() {
+        async function carregarJogo() {
+            try {
+                const docRef = doc(db, "partidas", SALA_ID);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists() && docSnap.data().historico && docSnap.data().historico.length > 0) {
+                    historicoChat = docSnap.data().historico;
+                    liberarChat();
+                    
+                    const chat = document.getElementById('chat');
+                    chat.innerHTML = "";
+                    
+                    historicoChat.forEach(msg => {
+                        const remetente = msg.role === 'user' ? 'Você' : 'Mestre';
+                        const classe = msg.role === 'user' ? 'user-msg' : 'ia-msg';
+                        adicionarNaTelaDireto(remetente, msg.parts[0].text, classe);
+                    });
+                }
+            } catch (e) {
+                console.error("Erro ao carregar do Firebase:", e);
+            }
+        }
+
+        async function salvarJogo() {
+            try {
+                await setDoc(doc(db, "partidas", SALA_ID), {
+                    historico: historicoChat,
+                    atualizadoEm: new Date()
+                });
+            } catch (e) {
+                console.error("Erro ao salvar no Firebase:", e);
+            }
+        }
+
+        function liberarChat() {
+            document.getElementById('mensagem').disabled = false;
+            document.getElementById('mensagem').placeholder = "O que você faz?";
+            document.getElementById('btn-enviar').disabled = false;
+        }
+
+        window.iniciarCampanha = async function() {
+            const chat = document.getElementById('chat');
+            chat.innerHTML = "";
+            adicionarNaTela('Sistema', 'Despertando em Aethelgard...', 'system-msg', true);
+            liberarChat();
+
+            const promptInicio = "Inicie a campanha de Aethelgard. Dê as boas-vindas sombrias ao mundo e exija minhas 3 escolhas iniciais para a ficha: Raça, Classe (D&D 5E) e a minha Anomalia (o item especial trazido do outro mundo).";
+            
+            historicoChat.push({
+                "role": "user",
+                "parts": [{ "text": promptInicio }]
+            });
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ historicoChat: historicoChat })
+                });
+
+                const data = await response.json();
+                removerCarregando();
+
+                if (!response.ok) throw new Error(data.error || "O Mestre falhou.");
+
+                adicionarNaTela('Mestre', data.texto, 'ia-msg', false, data.modelo);
+                
+                historicoChat.push({
+                    "role": "model",
+                    "parts": [{ "text": data.texto }]
+                });
+
+                await salvarJogo();
+            } catch (error) {
+                removerCarregando();
+                adicionarNaTela('Erro', error.message, 'system-msg');
+            }
+        };
+
+        window.reiniciarCampanha = async function() {
+            if (!confirm("Tem certeza que deseja apagar essa campanha e recomeçar do zero?")) return;
+            try {
+                await deleteDoc(doc(db, "partidas", SALA_ID));
+                location.reload();
+            } catch (e) {
+                alert("Erro ao resetar: " + e.message);
+            }
+        };
+
+        window.enviarMensagem = async function() {
             const input = document.getElementById('mensagem');
             const textoUsuario = input.value.trim();
             if (!textoUsuario) return;
@@ -67,14 +178,13 @@
                 "parts": [{ "text": textoUsuario }]
             });
 
-            adicionarNaTela('Sistema', 'Rolando dados...', 'system-msg', true);
+            adicionarNaTela('Sistema', 'Aguardando o destino...', 'system-msg', true);
 
             try {
-                // A MÁGICA AQUI: O celular chama a SUA própria API no Vercel
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ historicoChat: historicoChat }) // Manda só o histórico
+                    body: JSON.stringify({ historicoChat: historicoChat })
                 });
 
                 const data = await response.json();
@@ -82,24 +192,22 @@
 
                 if (!response.ok) throw new Error(data.error || "A magia falhou no servidor.");
 
-                // Adiciona a resposta da IA na tela
                 adicionarNaTela('Mestre', data.texto, 'ia-msg', false, data.modelo);
                 
-                // Salva no histórico do celular
                 historicoChat.push({
                     "role": "model",
                     "parts": [{ "text": data.texto }]
                 });
 
+                await salvarJogo();
+
             } catch (error) {
-                console.error("Erro:", error);
                 removerCarregando();
-                historicoChat.pop(); // Tira a última mensagem pra tentar de novo
+                historicoChat.pop(); 
                 adicionarNaTela('Alerta', error.message, 'system-msg');
             }
-        }
+        };
 
-        // --- Funções Visuais ---
         function adicionarNaTela(remetente, texto, classe, isTemp = false, modeloBadge = null) {
             const chat = document.getElementById('chat');
             const div = document.createElement('div');
@@ -118,9 +226,27 @@
             chat.scrollTop = chat.scrollHeight; 
         }
 
+        function adicionarNaTelaDireto(remetente, texto, classe) {
+            const chat = document.getElementById('chat');
+            const div = document.createElement('div');
+            div.className = classe;
+            const textoFormatado = texto.replace(/\n/g, '<br>');
+            div.innerHTML = `<strong>${remetente}:</strong> ${textoFormatado}`;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight; 
+        }
+
         function removerCarregando() {
             const temp = document.getElementById('carregando-msg');
             if (temp) temp.remove();
+        }
+
+        carregarJogo();
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch(err => console.error(err));
+            });
         }
     </script>
 </body>
