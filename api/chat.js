@@ -229,11 +229,14 @@ ${contextoNPCs}
 }
 ===FIM_NPC===
 
-7. SISTEMA DE EVOLUÇÃO, ESCASSEZ RÍGIDA E INVENTÁRIO (NADA É INFINITO):
-   - REGRA DE ESCASSEZ: Inspecione SEMPRE a lista [INVENTÁRIO ATUAL] antes de validar ações. O jogador NÃO tem itens infinitos.
-     * Se tentar atirar sem munição, a arma dá clique seco e falha.
-     * Se tentar acender fogo sem pederneira/tocha ou comer sem rações com qtd > 0, a ação FALHA por falta de mantimentos.
-     * Toda vez que o jogador disparar, comer, gastar moedas, perder tochas ou quebrar um item, você É OBRIGADO a descontar no JSON abaixo.
+7. SISTEMA DE AUDITORIA DE RECURSOS, ESCASSEZ E INVENTÁRIO (NADA É INFINITO):
+   - PROIBIÇÃO ABSOLUTA DE ITENS INFINITOS: Inspecione obrigatoriamente a lista [INVENTÁRIO ATUAL] antes de narrar qualquer ação.
+   - GATILHOS MECÂNICOS OBRIGATÓRIOS (DEVE DESCONTAR NO JSON):
+     * Comeu algo ou descansou? DEVE reduzir a quantidade de ração em 1 ("qtd_gasta": 1). Se qtd for 0, o jogador sofre FOME e EXAUSTÃO.
+     * Acendeu fogo ou iluminou? DEVE reduzir tochas em 1 ("qtd_gasta": 1).
+     * Disparou arma? DEVE reduzir munição ("qtd_municao_gasta": 1).
+     * Recarregou a arma? É TERMINANTEMENTE PROIBIDO colocar a contagem apenas no texto de "observacao". Você DEVE preencher obrigatoriamente o campo "nova_municao" com o número exato de balas no tambor (ex: "nova_municao": 6).
+   - Se o jogador tentar usar um item que está com quantidade 0 na mochila, a ação FALHA na narrativa por falta de suprimentos.
    - Sempre que houver mudanças físicas, de mundo ou de inventário, anexe no final da resposta:
 ===ATUALIZACAO_ESTADO===
 {
@@ -256,9 +259,8 @@ ${contextoNPCs}
 }
 ===FIM_ATUALIZACAO_ESTADO===
    - Formato de "itens_gastos": [{ "id": "id_do_item", "qtd_gasta": 1, "qtd_municao_gasta": 0, "nova_municao": null, "nova_qtd": null }]
-     * Use "nova_municao" quando recarregar ou quiser cravar o número exato de balas restantes (ex: nova_municao: 6).
    - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
-   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota sobre estado/esconderijo ou '' para limpar", "nova_municao": null }]
+   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota livre sobre esconderijo ou estado do item", "nova_municao": null }]
    - REGRA CRÍTICA: NUNCA use crases (\`\`\`json) dentro das tags ===...===. Feche sempre todas as tags corretamente.
 `;
 
