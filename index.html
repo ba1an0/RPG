@@ -182,7 +182,6 @@
             }
         }
 
-        // Salva múltiplos NPCs preservando o histórico cumulativo de memórias
         async function salvarOuAtualizarListaNpcs(listaNpcs) {
             if (!usuarioAtual || !Array.isArray(listaNpcs) || listaNpcs.length === 0) return;
 
@@ -298,7 +297,6 @@
             bloquearChat("Aguardando início da campanha...");
         }
 
-        // Proteção contra o limite de 1 MB do Firestore: mantém as últimas 60 mensagens salvas
         async function salvarJogo() {
             if (!usuarioAtual) return;
             try {
@@ -402,7 +400,6 @@
                     "parts": [{ "text": data.texto }]
                 });
 
-                // 1. Se gerou a Ficha Inicial
                 if (data.estadoInicial) {
                     statusJogador = data.estadoInicial.status_jogador || statusJogador;
                     if (statusJogador && !Array.isArray(statusJogador.marcos_e_vinculos)) {
@@ -414,12 +411,10 @@
                     }
                 }
 
-                // 2. Se houve alteração de HP, Vínculos, Mundo ou Mochila
                 if (data.estadoAtualizado) {
                     aplicarAtualizacaoEstado(data.estadoAtualizado);
                 }
 
-                // 3. Se houve atualização de 1 ou mais NPCs na cena
                 if (data.npcsAtualizados && data.npcsAtualizados.length > 0) {
                     await salvarOuAtualizarListaNpcs(data.npcsAtualizados);
                 }
@@ -509,14 +504,12 @@
                         (i.nome && gasto.id && i.nome.toLowerCase() === gasto.id.toLowerCase())
                     );
                     if (item) {
-                        // Se a IA mandou o número exato de munição (ex: recarregou para 6)
                         if (gasto.nova_municao !== undefined && gasto.nova_municao !== null) {
                             item.municao = Number(gasto.nova_municao);
                         } else if (gasto.qtd_municao_gasta && item.municao !== undefined) {
                             item.municao = Math.max(0, item.municao - Number(gasto.qtd_municao_gasta));
                         }
 
-                        // Se a IA mandou o número exato de quantidade
                         if (gasto.nova_qtd !== undefined && gasto.nova_qtd !== null) {
                             item.qtd = Number(gasto.nova_qtd);
                         } else if (gasto.qtd_gasta && item.qtd !== undefined) {
@@ -551,7 +544,6 @@
                 });
             }
             
-            // Registra qualquer observação/decisão sobre um item ou ajuste de munição
             if (Array.isArray(mod.itens_observacao)) {
                 mod.itens_observacao.forEach(obs => {
                     const item = inventario.find(i => 
@@ -640,7 +632,7 @@
                 `;
             } else if (abaAtualModal === 'mochila') {
                 let itensHtml = inventario.map(i => {
-                    // Autocorreção: se a IA teve preguiça e colocou a munição só na nota de texto, extrai o número real
+                    // Autocorreção: se a IA teve preguiça e colocou a munição só na nota, extrai o número
                     if (i.observacao && (i.municao === 0 || i.municao === undefined)) {
                         const matchBalas = i.observacao.match(/(\d+)\s*(?:\/\s*\d+)?\s*(?:tiros?|balas?)/i);
                         if (matchBalas) {
@@ -650,9 +642,10 @@
 
                     return `
                         <li style="margin-bottom:8px; border-bottom:1px solid #2a2a2a; padding-bottom:6px;">
-                            <strong style="color:#fff;">${i.nome}</strong>${i.qtd ? `<span style="color:#4caf50;">(x${i.qtd})</span>` : ''} 
+                            <strong style="color:#fff;">${i.nome}</strong> ${i.qtd ? `<span style="color:#4caf50;">(x${i.qtd})</span>` : ''} 
                             ${i.municao !== undefined ? `<span style="color:#64b5f6;">[Munição: ${i.municao}]</span>` : ''}
-                            <br><span style="color:#888; font-size:11px;">${i.detalhes \vert{}\vert{} ''}</span>${i.observacao ? `<br><span style="color:#ff9800; font-size:11px;">📌 <strong>Nota:</strong> ${i.observacao}</span>` : ''}
+                            <br><span style="color:#888; font-size:11px;">${i.detalhes || ''}</span>
+                            ${i.observacao ? `<br><span style="color:#ff9800; font-size:11px;">📌 <strong>Nota:</strong> ${i.observacao}</span>` : ''}
                         </li>
                     `;
                 }).join('');
