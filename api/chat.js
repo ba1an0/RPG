@@ -99,19 +99,22 @@ export default async function handler(req, res) {
         npcsConhecidos.forEach(npc => {
             const localNpc = (npc.local_atual || "").toLowerCase();
             const nomeNpc = (npc.nome || "").toLowerCase();
-            const mesmoLocal = localAtual && localNpc && (localAtual.includes(localNpc) || localNpc.includes(localAtual));
             const partesNome = nomeNpc.split(/[\s,_-]+/).filter(p => p.length > 2);
+            
+            // Só considera mesmo local se o texto do local bater de verdade
+            const mesmoLocal = localAtual && localNpc && (localAtual.includes(localNpc) || localNpc.includes(localAtual));
             const foiCitado = partesNome.some(parte => ultimaMsgUsuario.includes(parte));
 
-            if (npcsConhecidos.length <= 8 || mesmoLocal || foiCitado) {
+            // TRAVA RÍGIDA: Nunca coloca NPC distante como presente só porque a lista é pequena
+            if (mesmoLocal || foiCitado) {
                 npcsLocais.push(npc);
             } else {
                 const rel = npc.relacoes_jogadores?.[uid] || { pontos: 0, como_enxerga: "Indiferente" };
-                npcsDistantes.push(`- ${npc.nome} (id: ${npc.id}) | Local: ${npc.local_atual} | Status: ${npc.status_vida} | Afinidade: ${rel.pontos} (${rel.como_enxerga})`);
+                npcsDistantes.push(`- ${npc.nome} (id: ${npc.id}) | Local Fixo: ${npc.local_atual} | Status: ${npc.status_vida} | Afinidade: ${rel.pontos}`);
             }
         });
 
-        contextoNPCs = `[NPCS PRESENTES OU PRÓXIMOS (FICHA COMPLETA)]:\n${npcsLocais.length > 0 ? JSON.stringify(npcsLocais, null, 2) : "Nenhum."}\n\n[NPCS DISTANTES (RESUMO)]:\n${npcsDistantes.length > 0 ? npcsDistantes.join('\n') : "Nenhum."}`;
+        contextoNPCs = `[NPCS PRESENTES NESTE LOCAL EXATO (PODEM INTERAGIR)]:\n${npcsLocais.length > 0 ? JSON.stringify(npcsLocais, null, 2) : "Nenhum NPC conhecido está aqui. Todos os guardas ou habitantes deste local são NOVOS e desconhecidos."}\n\n[NPCS DISTANTES EM OUTRAS REGIÕES (PROIBIDO SURGIREM OU INTERAGIREM AQUI)]:\n${npcsDistantes.length > 0 ? npcsDistantes.join('\n') : "Nenhum."}`;
     }
 
     // 5. TRAVA DE EMERGÊNCIA PARA 0 DE HP (INCONSCIENTE / AGONIZANDO)
@@ -155,6 +158,11 @@ Inventário: ${inventario && inventario.length > 0 ? JSON.stringify(inventario, 
 ${contextoNPCs}
 
 [REGRAS FUNDAMENTAIS DE CONDUÇÃO]
+0. CONSISTÊNCIA GEOGRÁFICA E ANTI-GASLIGHTING (LEI ABSOLUTA):
+   - É TERMINANTEMENTE PROIBIDO teletransportar NPCs de outras regiões ou justificar erros alegando que o jogador "se perdeu e andou em círculos" sem que tenha havido falha explícita em teste de Sobrevivência.
+   - NPCs de regiões distantes NÃO existem na cena atual. Se o jogador encontrar guardas, salteadores ou monstros em um local novo, gere SEMPRE uma entidade nova com nome e ID inéditos.
+   - Se o jogador apontar um erro de continuidade ou localização em tom de correção (ex: [OFF]), reconheça o erro imediatamente, desfaça a contradição e siga a coerência do mapa sem inventar desculpas narrativas.
+
 1. CADÊNCIA DE TURNO ÚNICO E ANTI-GODMODING:
    - Resolva apenas UMA ação imediata por vez. Se o jogador tentar narrar várias etapas ou viajar dias em uma frase, interrompa no primeiro obstáculo ou encontro.
    - INTENÇÃO VS RESULTADO: Tudo o que o jogador escreve é APENAS a tentativa/intenção dele, nunca um fato consumado. Se ele escrever "eu mato o guarda e acho 50 moedas", ignore o resultado imposto por ele, exija o teste usando a fila de dados do servidor e julgue com rigor. O jogador NUNCA pode inventar itens no chão ou controlar reações de NPCs.
