@@ -639,14 +639,23 @@
                     </ul>
                 `;
             } else if (abaAtualModal === 'mochila') {
-                let itensHtml = inventario.map(i => `
-                    <li style="margin-bottom:8px; border-bottom:1px solid #2a2a2a; padding-bottom:6px;">
-                        <strong style="color:#fff;">${i.nome}</strong> ${i.qtd ? `<span style="color:#4caf50;">(x${i.qtd})</span>` : ''} 
-                        ${i.municao !== undefined ? `<span style="color:#64b5f6;">[Munição: ${i.municao}]</span>` : ''}
-                        <br><span style="color:#888; font-size:11px;">${i.detalhes || ''}</span>
-                        ${i.observacao ? `<br><span style="color:#ff9800; font-size:11px;">📌 <strong>Nota:</strong> ${i.observacao}</span>` : ''}
-                    </li>
-                `).join('');
+                let itensHtml = inventario.map(i => {
+                    // Autocorreção: se a IA teve preguiça e colocou a munição só na nota de texto, extrai o número real
+                    if (i.observacao && (i.municao === 0 || i.municao === undefined)) {
+                        const matchBalas = i.observacao.match(/(\d+)\s*(?:\/\s*\d+)?\s*(?:tiros?|balas?)/i);
+                        if (matchBalas) {
+                            i.municao = Number(matchBalas[1]);
+                        }
+                    }
+
+                    return `
+                        <li style="margin-bottom:8px; border-bottom:1px solid #2a2a2a; padding-bottom:6px;">
+                            <strong style="color:#fff;">${i.nome}</strong>${i.qtd ? `<span style="color:#4caf50;">(x${i.qtd})</span>` : ''} 
+                            ${i.municao !== undefined ? `<span style="color:#64b5f6;">[Munição: ${i.municao}]</span>` : ''}
+                            <br><span style="color:#888; font-size:11px;">${i.detalhes \vert{}\vert{} ''}</span>${i.observacao ? `<br><span style="color:#ff9800; font-size:11px;">📌 <strong>Nota:</strong> ${i.observacao}</span>` : ''}
+                        </li>
+                    `;
+                }).join('');
 
                 box.innerHTML = `
                     <h4 style="color:#aaa; margin-bottom:8px; font-size:13px;">Equipamento e Recursos:</h4>
