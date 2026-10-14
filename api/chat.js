@@ -25,6 +25,10 @@ function rolarDados(lados, quantidade) {
     return resultados;
 }
 
+export const config = {
+    maxDuration: 60 // Dá até 60 segundos para o Gemini pensar sem a Vercel derrubar a conexão
+};
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Método não permitido.' });
