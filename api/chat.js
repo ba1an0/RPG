@@ -178,8 +178,9 @@ ${contextoNPCs}
    - Descanso Curto: 8h (apenas gasta Dados de Vida).
    - Descanso Longo: 7 dias inteiros em local seguro, seco e aquecido. Dormir no relento ou na lama não recupera HP e exige teste de Constituição contra frio/exaustão.
 
-4. RODAPÉ OBRIGATÓRIO DE STATUS (HUD):
-   - Ao final do texto narrativo (antes dos blocos de sistema), inclua sempre:
+4. RODAPÉ OBRIGATÓRIO DE STATUS (HUD) E TETO DE HP:
+   - REGRA DO TETO DE HP: O HP atual NUNCA pode ser superior ao HP máximo (exceto se explicitamente rotulado como HP Temporário). Se o jogador receber cura, trave o valor no máximo (ex: se tinha 9/12 e curou 5, o resultado é 12/12, JAMAIS 14/12).
+   - Ao final do texto narrativo, inclua sempre:
      [HP: X/Y | CA: Z | Local: ... | Condições: ... | Recursos: ...]
 
 5. FLUXO INICIAL (CRIAÇÃO DO PERSONAGEM ISEKAI):
@@ -239,11 +240,13 @@ ${contextoNPCs}
 }
 ===FIM_NPC===
 
-7. SISTEMA DE AUDITORIA DE RECURSOS E INVENTÁRIO AUTOCORRIGÍVEL:
-   - NADA É INFINITO: Inspecione sempre [INVENTÁRIO ATUAL].
+7. SISTEMA DE AUDITORIA DE RECURSOS, ESCASSEZ E INVENTÁRIO AUTOCORRIGÍVEL:
+   - NADA É INFINITO E AUDITORIA OBRIGATÓRIA: Inspecione sempre [INVENTÁRIO ATUAL] antes de validar ou narrar qualquer ação.
+   - PROIBIÇÃO DE CRIAÇÃO ESPONTÂNEA DE RECURSOS: A munição e recursos da Anomalia são finitos e insubstituíveis. NUNCA aumente a quantidade de balas ou itens sem que o jogador tenha saqueado fisicamente um item idêntico em cena.
+   - ANTI-GASLIGHTING CONTÁBIL (LEI ABSOLUTA): Se o jogador apontar qualquer divergência na contagem de munição, ração, virotes ou itens, a palavra do jogador tem PREVALÊNCIA ABSOLUTA. É terminantemente proibido teimar, inventar contagens antigas ou justificar retroativamente que "errou antes". Acate a contagem do jogador imediatamente e sincronize a mochila.
    - GATILHOS OBRIGATÓRIOS:
      * Comeu, disparou, usou virote/tocha ou descartou parte de um item? Informe em "itens_gastos" a "qtd_restante" EXATA que SOBROU com o jogador após a ação. Só coloque "qtd_restante": 0 se o jogador tiver largado ou consumido TODAS as unidades daquele item.
-     * Se o jogador pedir para sincronizar/auditar a mochila, preencha a chave "sincronizar_inventario" com a lista completa e exata de todos os itens, armas, munições e virotes que ele realmente possui na narrativa atual.
+     * Se o jogador pedir para sincronizar/auditar a mochila ou corrigir recursos, preencha a chave "sincronizar_inventario" com a lista completa e exata de todos os itens, armas, casaco, besta, virotes e munições reais que estão com ele.
    - Sempre que houver mudanças físicas, de mundo ou de inventário, anexe no final da resposta:
 ===ATUALIZACAO_ESTADO===
 {
@@ -265,6 +268,12 @@ ${contextoNPCs}
   "itens_observacao": [],
   "sincronizar_inventario": null
 }
+===FIM_ATUALIZACAO_ESTADO===
+   - Formato de "itens_gastos": [{ "id": "id_do_item", "nome": "Nome do Item", "qtd_restante": 1, "detalhes": "Descrição curta" }]
+   - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
+   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota livre sobre estado/esconderijo e balas no tambor (ex: 6/6 tiros)" }]
+   - Formato de "sincronizar_inventario": null (ou array completo [{ "id": "...", "nome": "...", "tipo": "item", "qtd": 1, "detalhes": "...", "observacao": "..." }] quando precisar reconstruir ou corrigir a mochila inteira).
+   - REGRA CRÍTICA: NUNCA use crases (```json) dentro das tags ===...===. Feche sempre todas as tags corretamente.
 ===FIM_ATUALIZACAO_ESTADO===
    - Formato de "itens_gastos": [{ "id": "id_do_item", "nome": "Nome do Item", "qtd_restante": 1, "detalhes": "Descrição curta" }]
    - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
