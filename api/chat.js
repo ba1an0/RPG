@@ -239,14 +239,11 @@ ${contextoNPCs}
 }
 ===FIM_NPC===
 
-7. SISTEMA DE AUDITORIA DE RECURSOS, ESCASSEZ E INVENTÁRIO (NADA É INFINITO):
-   - PROIBIÇÃO ABSOLUTA DE ITENS INFINITOS: Inspecione obrigatoriamente a lista [INVENTÁRIO ATUAL] antes de narrar qualquer ação.
-   - GATILHOS MECÂNICOS OBRIGATÓRIOS (DEVE DESCONTAR NO JSON):
-     * Comeu algo ou descansou? DEVE reduzir a quantidade de ração em 1 ("qtd_gasta": 1). Se qtd for 0, o jogador sofre FOME e EXAUSTÃO.
-     * Acendeu fogo ou iluminou? DEVE reduzir tochas em 1 ("qtd_gasta": 1).
-     * Disparou arma? DEVE reduzir munição ("qtd_municao_gasta": 1).
-     * Recarregou a arma? É TERMINANTEMENTE PROIBIDO colocar a contagem apenas no texto de "observacao". Você DEVE preencher obrigatoriamente o campo "nova_municao" com o número exato de balas no tambor (ex: "nova_municao": 6).
-   - Se o jogador tentar usar um item que está com quantidade 0 na mochila, a ação FALHA na narrativa por falta de suprimentos.
+7. SISTEMA DE AUDITORIA DE RECURSOS E INVENTÁRIO AUTOCORRIGÍVEL:
+   - NADA É INFINITO: Inspecione sempre [INVENTÁRIO ATUAL].
+   - GATILHOS OBRIGATÓRIOS:
+     * Comeu, disparou, usou virote/tocha ou descartou parte de um item? Informe em "itens_gastos" a "qtd_restante" EXATA que SOBROU com o jogador após a ação. Só coloque "qtd_restante": 0 se o jogador tiver largado ou consumido TODAS as unidades daquele item.
+     * Se o jogador pedir para sincronizar/auditar a mochila, preencha a chave "sincronizar_inventario" com a lista completa e exata de todos os itens, armas, munições e virotes que ele realmente possui na narrativa atual.
    - Sempre que houver mudanças físicas, de mundo ou de inventário, anexe no final da resposta:
 ===ATUALIZACAO_ESTADO===
 {
@@ -265,12 +262,14 @@ ${contextoNPCs}
   "remover_fatos_mundo": [],
   "itens_gastos": [],
   "itens_ganhos": [],
-  "itens_observacao": []
+  "itens_observacao": [],
+  "sincronizar_inventario": null
 }
 ===FIM_ATUALIZACAO_ESTADO===
-   - Formato de "itens_gastos": [{ "id": "id_do_item", "qtd_gasta": 1, "qtd_municao_gasta": 0, "nova_municao": null, "nova_qtd": null }]
+   - Formato de "itens_gastos": [{ "id": "id_do_item", "nome": "Nome do Item", "qtd_restante": 1, "detalhes": "Descrição curta" }]
    - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
-   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota livre sobre esconderijo ou estado do item", "nova_municao": null }]
+   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota livre sobre estado/esconderijo e balas no tambor (ex: 6/6 tiros)" }]
+   - Formato de "sincronizar_inventario": null (ou array completo [{ "id": "...", "nome": "...", "tipo": "item", "qtd": 1, "detalhes": "...", "observacao": "..." }] quando precisar reconstruir/corrigir a mochila inteira).
    - REGRA CRÍTICA: NUNCA use crases (\`\`\`json) dentro das tags ===...===. Feche sempre todas as tags corretamente.
 `;
 
