@@ -501,6 +501,7 @@
                 estadoMundo.fatos_mundo = estadoMundo.fatos_mundo.filter(f => !mod.remover_fatos_mundo.includes(f));
             }
 
+            // Desconto de itens ou ajuste direto de munição/quantidade
             if (Array.isArray(mod.itens_gastos)) {
                 mod.itens_gastos.forEach(gasto => {
                     const item = inventario.find(i => 
@@ -508,10 +509,17 @@
                         (i.nome && gasto.id && i.nome.toLowerCase() === gasto.id.toLowerCase())
                     );
                     if (item) {
-                        if (gasto.qtd_municao_gasta && item.municao !== undefined) {
+                        // Se a IA mandou o número exato de munição (ex: recarregou para 6)
+                        if (gasto.nova_municao !== undefined && gasto.nova_municao !== null) {
+                            item.municao = Number(gasto.nova_municao);
+                        } else if (gasto.qtd_municao_gasta && item.municao !== undefined) {
                             item.municao = Math.max(0, item.municao - Number(gasto.qtd_municao_gasta));
                         }
-                        if (gasto.qtd_gasta && item.qtd !== undefined) {
+
+                        // Se a IA mandou o número exato de quantidade
+                        if (gasto.nova_qtd !== undefined && gasto.nova_qtd !== null) {
+                            item.qtd = Number(gasto.nova_qtd);
+                        } else if (gasto.qtd_gasta && item.qtd !== undefined) {
                             item.qtd -= Number(gasto.qtd_gasta);
                         }
                     }
@@ -543,7 +551,7 @@
                 });
             }
             
-            // Registra qualquer observação/decisão sobre um item (escondido, quebrado, envenenado, emprestado, etc.)
+            // Registra qualquer observação/decisão sobre um item ou ajuste de munição
             if (Array.isArray(mod.itens_observacao)) {
                 mod.itens_observacao.forEach(obs => {
                     const item = inventario.find(i => 
@@ -551,7 +559,10 @@
                         (i.nome && obs.id && i.nome.toLowerCase() === obs.id.toLowerCase())
                     );
                     if (item) {
-                        item.observacao = obs.observacao || "";
+                        if (obs.observacao !== undefined) item.observacao = obs.observacao;
+                        if (obs.nova_municao !== undefined && obs.nova_municao !== null) {
+                            item.municao = Number(obs.nova_municao);
+                        }
                     }
                 });
             }
