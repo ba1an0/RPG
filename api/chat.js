@@ -26,7 +26,7 @@ function rolarDados(lados, quantidade) {
 }
 
 export const config = {
-    maxDuration: 60 // Dá até 60 segundos para o Gemini pensar sem a Vercel derrubar a conexão
+    maxDuration: 60 // Dá até 60 segundos para o Gemini responder sem a Vercel derrubar
 };
 
 export default async function handler(req, res) {
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     } = req.body;
 
     const API_KEY = process.env.GEMINI_API_KEY; 
-    const MODELOS = ["gemini-3.5-flash", "gemini-2.5-flash"];
+    const MODELOS = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"];
 
     // 1. BUSCA O MUNDO MACRO DIRETO DO FIREBASE (REST API)
     let loreMundo = {
@@ -90,7 +90,7 @@ export default async function handler(req, res) {
         d4: rolarDados(4, 3)
     };
 
-    // 4. SEPARAÇÃO INTELIGENTE DE NPCS (Locais/Citados vs Distantes para não inflar tokens)
+    // 4. SEPARAÇÃO INTELIGENTE DE NPCS (Locais/Citados vs Distantes)
     const uid = userId || "jogador_local";
     const localAtual = (estadoMundo?.local_atual || "").toLowerCase();
     const ultimaMsgUsuario = (historicoRecente[historicoRecente.length - 1]?.parts?.[0]?.text || "").toLowerCase();
@@ -105,25 +105,23 @@ export default async function handler(req, res) {
             const nomeNpc = (npc.nome || "").toLowerCase();
             const partesNome = nomeNpc.split(/[\s,_-]+/).filter(p => p.length > 2);
             
-            // Só considera mesmo local se o texto do local bater de verdade
             const mesmoLocal = localAtual && localNpc && (localAtual.includes(localNpc) || localNpc.includes(localAtual));
             const foiCitado = partesNome.some(parte => ultimaMsgUsuario.includes(parte));
 
-            // TRAVA RÍGIDA: Nunca coloca NPC distante como presente só porque a lista é pequena
             if (mesmoLocal || foiCitado) {
                 npcsLocais.push(npc);
             } else {
                 const rel = npc.relacoes_jogadores?.[uid] || { pontos: 0, como_enxerga: "Indiferente" };
-                npcsDistantes.push(`- ${npc.nome} (id: ${npc.id}) | Local Fixo: ${npc.local_atual} | Status: ${npc.status_vida} | Afinidade: ${rel.pontos}`);
+                npcsDistantes.push(`- ${npc.nome} (id: ${npc.id}) \vert{} Local Fixo:${npc.local_atual} | Status: ${npc.status_vida} \vert{} Afinidade:${rel.pontos}`);
             }
         });
 
         contextoNPCs = `[NPCS PRESENTES NESTE LOCAL EXATO (PODEM INTERAGIR)]:\n${npcsLocais.length > 0 ? JSON.stringify(npcsLocais, null, 2) : "Nenhum NPC conhecido está aqui. Todos os guardas ou habitantes deste local são NOVOS e desconhecidos."}\n\n[NPCS DISTANTES EM OUTRAS REGIÕES (PROIBIDO SURGIREM OU INTERAGIREM AQUI)]:\n${npcsDistantes.length > 0 ? npcsDistantes.join('\n') : "Nenhum."}`;
     }
 
-    // 5. TRAVA DE EMERGÊNCIA PARA 0 DE HP (INCONSCIENTE / AGONIZANDO)
+    // 5. TRAVA DE EMERGÊNCIA PARA 0 DE HP
     const alertaZeroHP = (statusJogador && Number(statusJogador.hp_atual) <= 0)
-        ? `\n⚠️ [ALERTA CRÍTICO DE SISTEMA: JOGADOR COM 0 DE HP!] ⚠️\nO jogador está CAÍDO, INCONSCIENTE ou AGONIZANDO (0 HP). Você é PROIBIDO de permitir que ele realize ações físicas normais (correr, atacar, falar normalmente). Exija imediatamente um Teste Contra a Morte (Death Save de D&D 5E: d20 puro, >=10 sucesso, <10 falha) usando o primeiro d20 da fila do servidor, ou narre as consequências brutais de sua queda (ser roubado, capturado ou morto).\n`
+        ? `\n⚠️ [ALERTA CRÍTICO DE SISTEMA: JOGADOR COM 0 DE HP!] ⚠️\nO jogador está CAÍDO, INCONSCIENTE ou AGONIZANDO (0 HP). Você é PROIBIDO de permitir que ele realize ações físicas normais. Exija imediatamente um Teste Contra a Morte (Death Save de D&D 5E) usando o primeiro d20 da fila do servidor.\n`
         : "";
 
     const contextoMundoCampanha = estadoMundo
@@ -140,7 +138,7 @@ UID do Jogador agindo agora: "${uid}"
 
 [FILA DE DADOS REAIS SORTEADOS PELO SERVIDOR NESTE TURNO]
 - d20 disponíveis (use nesta ordem): [${filaDados.d20.join(', ')}]
-- d12: [${filaDados.d12.join(', ')}] | d10: [${filaDados.d10.join(', ')}] | d8: [${filaDados.d8.join(', ')}] | d6: [${filaDados.d6.join(', ')}] | d4: [${filaDados.d4.join(', ')}]
+- d12: [${filaDados.d12.join(', ')}] | d10: [${filaDados.d10.join(', ')}] \vert{} d8: [${filaDados.d8.join(', ')}] | d6: [${filaDados.d6.join(', ')}] \vert{} d4: [${filaDados.d4.join(', ')}]
 REGRA DE OURO DOS DADOS: Você é PROIBIDO de inventar valores de dados. Se a ação exigir rolagem de d20 ou dano, utilize OBRIGATORIAMENTE o primeiro número disponível da respectiva fila acima!
 
 [LEIS MACRO DO MUNDO (FIREBASE)]
@@ -163,37 +161,33 @@ ${contextoNPCs}
 
 [REGRAS FUNDAMENTAIS DE CONDUÇÃO]
 0. CONSISTÊNCIA GEOGRÁFICA E ANTI-GASLIGHTING (LEI ABSOLUTA):
-   - É TERMINANTEMENTE PROIBIDO teletransportar NPCs de outras regiões ou justificar erros alegando que o jogador "se perdeu e andou em círculos" sem que tenha havido falha explícita em teste de Sobrevivência.
-   - NPCs de regiões distantes NÃO existem na cena atual. Se o jogador encontrar guardas, salteadores ou monstros em um local novo, gere SEMPRE uma entidade nova com nome e ID inéditos.
+   - É TERMINANTEMENTE PROIBIDO teletransportar NPCs de outras regiões ou justificar erros alegando que o jogador "se perdeu e andou em círculos" sem falha explícita em teste de Sobrevivência.
+   - NPCs de regiões distantes NÃO existem na cena atual. Se o jogador encontrar guardas em um local novo, gere SEMPRE uma entidade nova com nome e ID inéditos.
    - Se o jogador apontar um erro de continuidade ou localização em tom de correção (ex: [OFF]), reconheça o erro imediatamente, desfaça a contradição e siga a coerência do mapa sem inventar desculpas narrativas.
 
 1. CADÊNCIA DE TURNO ÚNICO E ANTI-GODMODING:
    - Resolva apenas UMA ação imediata por vez. Se o jogador tentar narrar várias etapas ou viajar dias em uma frase, interrompa no primeiro obstáculo ou encontro.
-   - INTENÇÃO VS RESULTADO: Tudo o que o jogador escreve é APENAS a tentativa/intenção dele, nunca um fato consumado. Se ele escrever "eu mato o guarda e acho 50 moedas", ignore o resultado imposto por ele, exija o teste usando a fila de dados do servidor e julgue com rigor. O jogador NUNCA pode inventar itens no chão ou controlar reações de NPCs.
+   - INTENÇÃO VS RESULTADO: Tudo o que o jogador escreve é APENAS a tentativa/intenção dele, nunca um fato consumado. O jogador NUNCA pode inventar itens no chão ou controlar reações de NPCs.
 
 2. SISTEMA DE DADOS MODERADO, VANTAGEM E TÁTICA REALISTA:
-   - REGRA DE ATACANTE OCULTO (VANTAGEM): Se o jogador atacar estando escondido, camuflado ou de emboscada sem ser visto, role SEMPRE com VANTAGEM (pegue os dois primeiros d20 da fila do servidor e use OBRIGATORIAMENTE o maior). Adicione o dano de Ataque Furtivo do Ladino.
-   - TIRO MIRADO / EMBOSCADA A QUEIMA-ROUPA: Se o jogador estiver em silêncio, mirando com calma em um alvo estático e desprevenido, aplique bônus circunstancial (+2 a +5 no teste) ou considere a CA do alvo desprovida de bônus de esquiva.
-   - NARRATIVA COERENTE DE CA: Se o teste de ataque falhar contra a CA de um inimigo de armadura, NUNCA narre que o atirador errou o alvo no ar a curta distância. Narre que o projétil atingiu a placa de ferro, o elmo de aço ou o escudo e ricocheteou em faíscas sem perfurar a proteção vital.
+   - REGRA DE ATACANTE OCULTO (VANTAGEM): Se o jogador atacar de emboscada sem ser visto, role SEMPRE com VANTAGEM (pegue os dois primeiros d20 da fila do servidor e use OBRIGATORIAMENTE o maior). Adicione o dano de Ataque Furtivo do Ladino.
+   - TIRO MIRADO / EMBOSCADA A QUEIMA-ROUPA: Se o jogador estiver em silêncio, mirando com calma em um alvo estático e desprevenido, aplique bônus circunstancial (+2 a +5 no teste).
+   - NARRATIVA COERENTE DE CA: Se o teste falhar contra CA de armadura, NUNCA narre que o atirador errou no ar a curta distância. Narre que o projétil atingiu a placa de metal ou broquel sem perfurar órgão vital.
    - Mostre o cálculo no topo da resposta:
      🎲 Teste de Ataque (com Vantagem): d20 ([dado1], [dado2] -> usa [maior]) + [mod] = [total] vs CA [defesa] -> [Sucesso/Falha].
 
 3. DESCANSO REALISTA (GRITTY REALISM):
    - Descanso Curto: 8h (apenas gasta Dados de Vida).
-   - Descanso Longo: 7 dias inteiros em local seguro, seco e aquecido. Dormir no relento ou na lama não recupera HP e exige teste de Constituição contra frio/exaustão.
+   - Descanso Longo: 7 dias inteiros em local seguro, seco e aquecido. Dormir no relento não recupera HP.
 
 4. RODAPÉ OBRIGATÓRIO DE STATUS (HUD) E TETO DE HP:
-   - REGRA DO TETO DE HP: O HP atual NUNCA pode ser superior ao HP máximo (exceto se explicitamente rotulado como HP Temporário). Se o jogador receber cura, trave o valor no máximo (ex: se tinha 9/12 e curou 5, o resultado é 12/12, JAMAIS 14/12).
+   - REGRA DO TETO DE HP: O HP atual NUNCA pode ser superior ao HP máximo. Se o jogador receber cura, trave o valor no máximo (ex: se tinha 9/12 e curou 5, o resultado é 12/12, JAMAIS 14/12).
    - Ao final do texto narrativo, inclua sempre:
      [HP: X/Y | CA: Z | Local: ... | Condições: ... | Recursos: ...]
 
 5. FLUXO INICIAL (CRIAÇÃO DO PERSONAGEM ISEKAI):
-   - Na primeira mensagem da campanha, dê as boas-vindas sombrias e exija as 4 definições:
-     1) Nome do Personagem
-     2) Raça
-     3) Classe (D&D 5E)
-     4) A Anomalia (Um único item pessoal, tático ou tecnológico trazido do outro mundo. PROIBIDO itens de destruição em massa ou impacto global).
-   - Quando o jogador fornecer esses 4 dados, apresente a ficha no texto, narre o despertar e anexe OBRIGATORIAMENTE no final da resposta o bloco:
+   - Na primeira mensagem da campanha, dê as boas-vindas sombrias e exija: Nome, Raça, Classe (D&D 5E) e Anomalia (uso pessoal, proibido destruição em massa).
+   - Ao receber as respostas, gere a ficha completa e o bloco:
 ===ESTADO_INICIAL===
 {
   "status_jogador": {
@@ -223,8 +217,8 @@ ${contextoNPCs}
 ===FIM_ESTADO_INICIAL===
 
 6. SISTEMA DINÂMICO DE NPCS (MEMÓRIA CUMULATIVA):
-   - NPCs têm interesses próprios, preconceitos e memória permanente. A relação vai de -100 (ódio mortal) a +100 (lealdade).
-   - Sempre que um NPC novo surgir ou um NPC existente interagir de forma relevante com o jogador, anexe no final da resposta (um bloco para cada NPC envolvido na cena):
+   - NPCs têm interesses próprios e memória permanente. A relação vai de -100 a +100.
+   - Sempre que um NPC novo surgir ou um NPC existente interagir de forma relevante, anexe:
 ===ATUALIZACAO_NPC===
 {
   "id": "id_unico_minusculo_sem_espacos",
@@ -233,7 +227,7 @@ ${contextoNPCs}
   "aparencia": "Descrição visual curta",
   "personalidade": "Traços de comportamento",
   "local_atual": "Onde ele está agora",
-  "status_vida": "Estado físico atual, o que está fazendo, segredos descobertos ou observações livres sobre ele",
+  "status_vida": "Estado físico atual, o que está fazendo ou observações livres",
   "relacoes_jogadores": {
     "${uid}": {
       "pontos": 0,
@@ -246,8 +240,8 @@ ${contextoNPCs}
 
 7. SISTEMA DE AUDITORIA DE RECURSOS, ESCASSEZ E INVENTÁRIO AUTOCORRIGÍVEL:
    - NADA É INFINITO E AUDITORIA OBRIGATÓRIA: Inspecione sempre [INVENTÁRIO ATUAL] antes de validar ou narrar qualquer ação.
-   - PROIBIÇÃO DE CRIAÇÃO ESPONTÂNEA DE RECURSOS: A munição e recursos da Anomalia são finitos e insubstituíveis. NUNCA aumente a quantidade de balas ou itens sem que o jogador tenha saqueado fisicamente um item idêntico em cena.
-   - ANTI-GASLIGHTING CONTÁBIL (LEI ABSOLUTA): Se o jogador apontar qualquer divergência na contagem de munição, ração, virotes ou itens, a palavra do jogador tem PREVALÊNCIA ABSOLUTA. É terminantemente proibido teimar, inventar contagens antigas ou justificar retroativamente que "errou antes". Acate a contagem do jogador imediatamente e sincronize a mochila.
+   - PROIBIÇÃO DE CRIAÇÃO ESPONTÂNEA DE RECURSOS: A munição e recursos da Anomalia são finitos e insubstituíveis. NUNCA aumente a quantidade de balas ou itens sem saque físico em cena.
+   - ANTI-GASLIGHTING CONTÁBIL (LEI ABSOLUTA): Se o jogador apontar qualquer divergência na contagem de munição, ração, virotes ou itens, a palavra do jogador tem PREVALÊNCIA ABSOLUTA. É proibido teimar ou inventar contagens antigas. Acate a contagem do jogador imediatamente e sincronize a mochila.
    - GATILHOS OBRIGATÓRIOS:
      * Comeu, disparou, usou virote/tocha ou descartou parte de um item? Informe em "itens_gastos" a "qtd_restante" EXATA que SOBROU com o jogador após a ação. Só coloque "qtd_restante": 0 se o jogador tiver largado ou consumido TODAS as unidades daquele item.
      * Se o jogador pedir para sincronizar/auditar a mochila ou corrigir recursos, preencha a chave "sincronizar_inventario" com a lista completa e exata de todos os itens, armas, casaco, besta, virotes e munições reais que estão com ele.
@@ -277,12 +271,6 @@ ${contextoNPCs}
    - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
    - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota livre sobre estado/esconderijo e balas no tambor (ex: 6/6 tiros)" }]
    - Formato de "sincronizar_inventario": null (ou array completo [{ "id": "...", "nome": "...", "tipo": "item", "qtd": 1, "detalhes": "...", "observacao": "..." }] quando precisar reconstruir ou corrigir a mochila inteira).
-   - REGRA CRÍTICA: NUNCA use crases (```json) dentro das tags ===...===. Feche sempre todas as tags corretamente.
-===FIM_ATUALIZACAO_ESTADO===
-   - Formato de "itens_gastos": [{ "id": "id_do_item", "nome": "Nome do Item", "qtd_restante": 1, "detalhes": "Descrição curta" }]
-   - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
-   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota livre sobre estado/esconderijo e balas no tambor (ex: 6/6 tiros)" }]
-   - Formato de "sincronizar_inventario": null (ou array completo [{ "id": "...", "nome": "...", "tipo": "item", "qtd": 1, "detalhes": "...", "observacao": "..." }] quando precisar reconstruir/corrigir a mochila inteira).
    - REGRA CRÍTICA: NUNCA use crases (\`\`\`json) dentro das tags ===...===. Feche sempre todas as tags corretamente.
 `;
 
@@ -334,7 +322,7 @@ ${contextoNPCs}
         let estadoAtualizado = null;
         let textoLimpo = textoIA;
 
-        // 1. Extrator Tolerante para NPCs (suporta múltiplos blocos e fechamento omitido)
+        // 1. Extrator Tolerante para NPCs
         const regexNPCGlobal = /===ATUALIZACAO_NPC===([\s\S]*?)(?:===FIM_NPC===|(?====[A-Z_]+===)|$)/g;
         const matchesNPC = [...textoLimpo.matchAll(regexNPCGlobal)];
         for (const match of matchesNPC) {
@@ -375,7 +363,6 @@ ${contextoNPCs}
             textoLimpo = textoLimpo.replace(regexAtualizacao, '').trim();
         }
 
-        // Limpa qualquer tag residual órfã que possa ter sobrado
         textoLimpo = textoLimpo.replace(/===[A-Z_]+===/g, '').trim();
 
         return res.status(200).json({ 
