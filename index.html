@@ -496,13 +496,29 @@
                 estadoMundo.fatos_mundo = estadoMundo.fatos_mundo.filter(f => !mod.remover_fatos_mundo.includes(f));
             }
 
-            // Desconto de itens ou ajuste direto de munição/quantidade
+            // Reconstrução completa da mochila quando acionado pelo botão Sincronizar
+            if (Array.isArray(mod.sincronizar_inventario) && mod.sincronizar_inventario.length > 0) {
+                inventario = mod.sincronizar_inventario.map(item => ({
+                    id: item.id || (item.nome || 'item').toLowerCase().replace(/\s+/g, '_'),
+                    nome: item.nome || item.id,
+                    tipo: item.tipo || 'item',
+                    qtd: item.qtd !== undefined ? Number(item.qtd) : 1,
+                    ...(item.municao !== undefined && item.municao !== null ? { municao: Number(item.municao) } : {}),
+                    detalhes: item.detalhes || '',
+                    observacao: item.observacao || ''
+                }));
+                return;
+            }
+
+            // Desconto de itens, ajuste direto ou recriação automática se o item tinha sumido
             if (Array.isArray(mod.itens_gastos)) {
                 mod.itens_gastos.forEach(gasto => {
                     const item = inventario.find(i => 
                         (i.id && gasto.id && i.id.toLowerCase() === gasto.id.toLowerCase()) ||
-                        (i.nome && gasto.id && i.nome.toLowerCase() === gasto.id.toLowerCase())
+                        (i.nome && gasto.id && i.nome.toLowerCase() === gasto.id.toLowerCase()) ||
+                        (i.nome && gasto.nome && i.nome.toLowerCase() === gasto.nome.toLowerCase())
                     );
+
                     if (item) {
                         if (gasto.nova_municao !== undefined && gasto.nova_municao !== null) {
                             item.municao = Number(gasto.nova_municao);
@@ -510,11 +526,21 @@
                             item.municao = Math.max(0, item.municao - Number(gasto.qtd_municao_gasta));
                         }
 
-                        if (gasto.nova_qtd !== undefined && gasto.nova_qtd !== null) {
+                        if (gasto.qtd_restante !== undefined && gasto.qtd_restante !== null) {
+                            item.qtd = Number(gasto.qtd_restante);
+                        } else if (gasto.nova_qtd !== undefined && gasto.nova_qtd !== null && Number(gasto.nova_qtd) > 0) {
                             item.qtd = Number(gasto.nova_qtd);
                         } else if (gasto.qtd_gasta && item.qtd !== undefined) {
                             item.qtd -= Number(gasto.qtd_gasta);
                         }
+                    } else if (gasto.qtd_restante !== undefined && Number(gasto.qtd_restante) > 0) {
+                        inventario.push({
+                            id: gasto.id || (gasto.nome || 'item').toLowerCase().replace(/\s+/g, '_'),
+                            nome: gasto.nome || gasto.id,
+                            tipo: 'item',
+                            qtd: Number(gasto.qtd_restante),
+                            detalhes: gasto.detalhes || ''
+                        });
                     }
                 });
                 inventario = inventario.filter(i => i.tipo === 'anomalia' || i.qtd === undefined || i.qtd > 0);
@@ -529,7 +555,7 @@
                     );
                     if (existente) {
                         if (novo.qtd !== undefined) existente.qtd = (existente.qtd || 1) + Number(novo.qtd);
-                        if (novo.municao !== undefined) existente.municao = (existente.municao || 0) + Number(novo.municao);
+                        if (novo.municao !== undefined && novo.municao !== null) existente.municao = Number(novo.municao);
                         if (novo.detalhes) existente.detalhes = novo.detalhes;
                     } else {
                         inventario.push({
@@ -537,7 +563,7 @@
                             nome: novo.nome,
                             tipo: novo.tipo || 'item',
                             qtd: novo.qtd !== undefined ? Number(novo.qtd) : 1,
-                            ...(novo.municao !== undefined ? { municao: Number(novo.municao) } : {}),
+                            ...(novo.municao !== undefined && novo.municao !== null ? { municao: Number(novo.municao) } : {}),
                             detalhes: novo.detalhes || ''
                         });
                     }
@@ -559,6 +585,13 @@
                 });
             }
         }
+
+        window.sincronizarMochilaComHistoria = async function() {
+            toggleMochila();
+            const input = document.getElementById('mensagem');
+            input.value = "[SISTEMA]: Faça uma auditoria rápida do meu equipamento atual conforme a história: confirme no texto e preencha a chave 'sincronizar_inventario' no JSON com todos os itens, armas, casaco, besta, virotes exatos e munições que estão comigo agora.";
+            await enviarMensagem();
+        };
 
         window.toggleMochila = function() {
             const modal = document.getElementById('modal-mochila');
@@ -632,8 +665,8 @@
                 `;
             } else if (abaAtualModal === 'mochila') {
                 let itensHtml = inventario.map(i => {
-                    // Autocorreção: se a IA teve preguiça e colocou a munição só na nota, extrai o número
-                    if (i.observacao && (i.municao === 0 || i.municao === undefined)) {
+                    // Sincroniza sempre o número de munição caso a nota informe X/Y tiros ou balas
+                    if (i.observacao) {
                         const matchBalas = i.observacao.match(/(\d+)\s*(?:\/\s*\d+)?\s*(?:tiros?|balas?)/i);
                         if (matchBalas) {
                             i.municao = Number(matchBalas[1]);
@@ -651,7 +684,10 @@
                 }).join('');
 
                 box.innerHTML = `
-                    <h4 style="color:#aaa; margin-bottom:8px; font-size:13px;">Equipamento e Recursos:</h4>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h4 style="color:#aaa; font-size:13px;">Equipamento e Recursos:</h4>
+                        <button class="btn-action" style="color:#64b5f6; border-color:#2196f3;" onclick="sincronizarMochilaComHistoria()">🔄 Sincronizar com a História</button>
+                    </div>
                     <ul style="list-style:none; padding:0;">${itensHtml || '<li style="color:#666;">Mochila vazia.</li>'}</ul>
                 `;
             } else if (abaAtualModal === 'mundo') {
