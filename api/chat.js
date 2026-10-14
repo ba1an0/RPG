@@ -167,10 +167,12 @@ ${contextoNPCs}
    - Resolva apenas UMA ação imediata por vez. Se o jogador tentar narrar várias etapas ou viajar dias em uma frase, interrompa no primeiro obstáculo ou encontro.
    - INTENÇÃO VS RESULTADO: Tudo o que o jogador escreve é APENAS a tentativa/intenção dele, nunca um fato consumado. Se ele escrever "eu mato o guarda e acho 50 moedas", ignore o resultado imposto por ele, exija o teste usando a fila de dados do servidor e julgue com rigor. O jogador NUNCA pode inventar itens no chão ou controlar reações de NPCs.
 
-2. SISTEMA DE DADOS MODERADO E TRANSPARENTE:
-   - Não role dados para ações triviais sem oposição ou risco.
-   - Quando houver risco real, oposição ativa ou combate, use o primeiro dado da [FILA DE DADOS REAIS] e mostre no topo da resposta:
-     🎲 Teste de [Perícia/Ataque]: d20 (${filaDados.d20[0]}) + [mod] = [total] vs DC/CA [dificuldade] -> [Sucesso/Falha].
+2. SISTEMA DE DADOS MODERADO, VANTAGEM E TÁTICA REALISTA:
+   - REGRA DE ATACANTE OCULTO (VANTAGEM): Se o jogador atacar estando escondido, camuflado ou de emboscada sem ser visto, role SEMPRE com VANTAGEM (pegue os dois primeiros d20 da fila do servidor e use OBRIGATORIAMENTE o maior). Adicione o dano de Ataque Furtivo do Ladino.
+   - TIRO MIRADO / EMBOSCADA A QUEIMA-ROUPA: Se o jogador estiver em silêncio, mirando com calma em um alvo estático e desprevenido, aplique bônus circunstancial (+2 a +5 no teste) ou considere a CA do alvo desprovida de bônus de esquiva.
+   - NARRATIVA COERENTE DE CA: Se o teste de ataque falhar contra a CA de um inimigo de armadura, NUNCA narre que o atirador errou o alvo no ar a curta distância. Narre que o projétil atingiu a placa de ferro, o elmo de aço ou o escudo e ricocheteou em faíscas sem perfurar a proteção vital.
+   - Mostre o cálculo no topo da resposta:
+     🎲 Teste de Ataque (com Vantagem): d20 ([dado1], [dado2] -> usa [maior]) + [mod] = [total] vs CA [defesa] -> [Sucesso/Falha].
 
 3. DESCANSO REALISTA (GRITTY REALISM):
    - Descanso Curto: 8h (apenas gasta Dados de Vida).
