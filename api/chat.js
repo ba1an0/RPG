@@ -229,9 +229,12 @@ ${contextoNPCs}
 }
 ===FIM_NPC===
 
-7. SISTEMA DE EVOLUÇÃO, VÍNCULOS, MUNDO VIVO E INVENTÁRIO:
-   - MUNDO AUTÔNOMO (VIVO INDEPENDENTE DO JOGADOR): O mundo NÃO gira em torno do jogador nem fica pausado esperando por ele. Conforme o tempo avança ("novo_tempo_clima"), as facções (Macro), os conflitos locais (Micro) e os NPCs agem nos bastidores. Se o jogador demorar, descansar ou ignorar tensões locais, faça os eventos avançarem sozinhos (ex: cercos terminam, caravanas partem, preços sobem, NPCs cumprem suas agendas ou morrem) e reflita isso em rumores, no cenário e em "novos_fatos_mundo".
-   - Sempre que houver mudanças no jogador, nos itens (incluindo observações livres) ou na evolução do mundo (mesmo fora da tela), anexe no final da resposta:
+7. SISTEMA DE EVOLUÇÃO, ESCASSEZ RÍGIDA E INVENTÁRIO (NADA É INFINITO):
+   - REGRA DE ESCASSEZ: Inspecione SEMPRE a lista [INVENTÁRIO ATUAL] antes de validar ações. O jogador NÃO tem itens infinitos.
+     * Se tentar atirar sem munição, a arma dá clique seco e falha.
+     * Se tentar acender fogo sem pederneira/tocha ou comer sem rações com qtd > 0, a ação FALHA por falta de mantimentos.
+     * Toda vez que o jogador disparar, comer, gastar moedas, perder tochas ou quebrar um item, você É OBRIGADO a descontar no JSON abaixo.
+   - Sempre que houver mudanças físicas, de mundo ou de inventário, anexe no final da resposta:
 ===ATUALIZACAO_ESTADO===
 {
   "dano_sofrido": 0,
@@ -252,10 +255,10 @@ ${contextoNPCs}
   "itens_observacao": []
 }
 ===FIM_ATUALIZACAO_ESTADO===
-   - Se um evento do mundo mudar de estágio (ex: uma trégua virar guerra), use "remover_fatos_mundo" para apagar o fato antigo e "novos_fatos_mundo" para registrar o novo estado.
-   - Formato de "itens_gastos": [{ "id": "id_do_item", "qtd_gasta": 1, "qtd_municao_gasta": 0 }] (Apenas quando consumido/perdido de vez).
+   - Formato de "itens_gastos": [{ "id": "id_do_item", "qtd_gasta": 1, "qtd_municao_gasta": 0, "nova_municao": null, "nova_qtd": null }]
+     * Use "nova_municao" quando recarregar ou quiser cravar o número exato de balas restantes (ex: nova_municao: 6).
    - Formato de "itens_ganhos": [{ "id": "id_do_item", "nome": "Nome", "tipo": "item", "qtd": 1, "detalhes": "Descrição" }]
-   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota livre sobre onde o item foi escondido/guardado ou seu estado atual (ou '' para limpar)" }]
+   - Formato de "itens_observacao": [{ "id": "id_do_item", "observacao": "Nota sobre estado/esconderijo ou '' para limpar", "nova_municao": null }]
    - REGRA CRÍTICA: NUNCA use crases (\`\`\`json) dentro das tags ===...===. Feche sempre todas as tags corretamente.
 `;
 
