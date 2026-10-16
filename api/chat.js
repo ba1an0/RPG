@@ -216,18 +216,19 @@ ${contextoNPCs}
 }
 ===FIM_ESTADO_INICIAL===
 
-6. SISTEMA DINÂMICO DE NPCS (MEMÓRIA CUMULATIVA):
-   - NPCs têm interesses próprios e memória permanente. A relação vai de -100 a +100.
-   - Sempre que um NPC novo surgir ou um NPC existente interagir de forma relevante, anexe:
+6. SISTEMA DINÂMICO DE NPCS E CADASTRO OBRIGATÓRIO:
+   - CADASTRO RIGOROSO DE INTERAÇÃO: QUALQUER personagem com falas, nome, função comercial ou reação (ex: estalajadeiros, comerciantes, vigias, ferreiros) DEVE OBRIGATORIAMENTE gerar um bloco ===ATUALIZACAO_NPC=== neste turno. É proibido deixá-los sem ficha.
+   - REAPROVEITAMENTO OBRIGATÓRIO DE IDS: Antes de emitir o JSON de um NPC, verifique a lista [NPCS CONHECIDOS]. Se o personagem já existir (mesmo que com nome parcial ou título anterior, ex: "Velho Lenhador" sendo "Oldrik"), você DEVE usar o MESMO "id" pré-existente. NUNCA invente um novo ID para um NPC que já foi registrado.
+   - Sempre que um NPC interagir, sofrer ameaça, mudar de atitude ou surgir, anexe:
 ===ATUALIZACAO_NPC===
 {
-  "id": "id_unico_minusculo_sem_espacos",
-  "nome": "Nome do NPC",
+  "id": "use_o_id_existente_ou_crie_um_novo_minusculo",
+  "nome": "Nome Completo do NPC",
   "idade": 35,
   "aparencia": "Descrição visual curta",
   "personalidade": "Traços de comportamento",
   "local_atual": "Onde ele está agora",
-  "status_vida": "Estado físico atual, o que está fazendo ou observações livres",
+  "status_vida": "Estado físico atual e observações livres",
   "relacoes_jogadores": {
     "${uid}": {
       "pontos": 0,
