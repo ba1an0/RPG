@@ -186,10 +186,19 @@
             if (!usuarioAtual || !Array.isArray(listaNpcs) || listaNpcs.length === 0) return;
 
             for (const npcNovo of listaNpcs) {
-                if (!npcNovo || !npcNovo.id) continue;
+                if (!npcNovo || !npcNovo.nome) continue;
                 try {
                     const uid = usuarioAtual.uid;
-                    const npcExistente = npcsCache.find(n => n.id === npcNovo.id) || {};
+
+                    // Busca se já existe pelo ID OU pelo Nome exato (evita duplicar Borin, Oldrik, etc.)
+                    const nomeNovoLimpo = npcNovo.nome.trim().toLowerCase();
+                    const npcExistente = npcsCache.find(n => 
+                        (npcNovo.id && n.id === npcNovo.id) || 
+                        (n.nome && n.nome.trim().toLowerCase() === nomeNovoLimpo)
+                    ) || {};
+
+                    // Mantém o ID original do banco para não criar documento órfão
+                    const idFinal = npcExistente.id || npcNovo.id || nomeNovoLimpo.replace(/\s+/g, '_');
                     
                     const relacoesAntigas = npcExistente.relacoes_jogadores || {};
                     const relacaoJogadorAntiga = relacoesAntigas[uid] || { pontos: 0, como_enxerga: "Desconhecido", historico: [] };
@@ -206,8 +215,8 @@
                     }
 
                     const npcConsolidado = {
-                        id: npcNovo.id,
-                        nome: npcExistente.nome || npcNovo.nome || "Desconhecido",
+                        id: idFinal,
+                        nome: npcNovo.nome || npcExistente.nome || "Desconhecido",
                         idade: npcExistente.idade || npcNovo.idade || null,
                         aparencia: npcExistente.aparencia || npcNovo.aparencia || "",
                         personalidade: npcExistente.personalidade || npcNovo.personalidade || "",
@@ -223,20 +232,50 @@
                         }
                     };
 
-                    const npcRef = doc(db, "usuarios", uid, "campanhas", "principal", "npcs", npcConsolidado.id);
+                    const npcRef = doc(db, "usuarios", uid, "campanhas", "principal", "npcs", idFinal);
                     await setDoc(npcRef, npcConsolidado, { merge: true });
 
-                    const idx = npcsCache.findIndex(n => n.id === npcConsolidado.id);
+                    const idx = npcsCache.findIndex(n => n.id === idFinal);
                     if (idx >= 0) npcsCache[idx] = npcConsolidado;
                     else npcsCache.push(npcConsolidado);
 
-                    adicionarAvisoNpc(`Memória de NPC registrada: ${npcConsolidado.nome}`);
+                    adicionarAvisoNpc(`Memória consolidada: ${npcConsolidado.nome}`);
                 } catch (e) {
                     console.error("Erro ao salvar NPC:", e);
                 }
             }
         }
 
+        window.limparNpcsDuplicados = async function() {
+            if (!usuarioAtual || npcsCache.length === 0) return;
+            const vistos = new Map();
+            const paraDeletar = [];
+
+            npcsCache.forEach(npc => {
+                const chave = npc.nome.trim().toLowerCase();
+                if (vistos.has(chave)) {
+                    // Mantém o que tiver mais histórico ou afinidade mais recente
+                    paraDeletar.push(npc.id);
+                } else {
+                    vistos.set(chave, npc.id);
+                }
+            });
+
+            if (paraDeletar.length === 0) {
+                alert("Nenhum NPC duplicado encontrado.");
+                return;
+            }
+
+            for (const id of paraDeletar) {
+                const ref = doc(db, "usuarios", usuarioAtual.uid, "campanhas", "principal", "npcs", id);
+                await deleteDoc(ref);
+            }
+
+            await obterNpcsConhecidos();
+            renderizarMochila();
+            alert(`Foram fundidos/removidos ${paraDeletar.length} registros duplicados.`);
+        };
+        
         async function carregarCampanhaDoUsuario() {
             const chat = document.getElementById('chat');
             chat.innerHTML = "<div class='painel-central'><p>Consultando registros arcanos...</p></div>";
@@ -726,6 +765,7 @@
                         ${fatosHtml}
                     </ul>
                     <h4 style="color:#aaa; margin:10px 0 6px 0; font-size:13px;">👥 NPCs Conhecidos (${npcsCache.length}):</h4>
+                    <button class="btn-action" style="color:#ff9800; border-color:#ff9800;" onclick="limparNpcsDuplicados()">🧹 Unificar Duplicados</button>
                     ${npcsHtml}
                 `;
             }
